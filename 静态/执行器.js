@@ -1,6 +1,7 @@
 // Web Worker：Pyodide 执行沙箱
 // 消息协议：
 //   主线程 → Worker: {类型:"跑", 语言, 源码, 会话id}
+//                    {类型:"跑Python", 依赖语言, 源码, 会话id}  // 直跑 Python，绕开语言桥
 //   Worker → 主线程: {类型:"结果"|"错误"|"进度", 会话id, ...}
 
 self.PYODIDE_VERSION = "0.26.4";
@@ -49,6 +50,21 @@ import sys
 if '/${语言}' not in sys.path:
     sys.path.insert(0, '/${语言}')
 `);
+  // 极快专属补丁：retrieval.py 用 __file__ 往上 3 级定位 stdlib/blocks/，
+  // 这假设 retrieval 在 <repo>/src/jikuai/ai/，但 Pyodide FS 里落在
+  // /极快/jikuai/ai/（只有 2 层深度），上 3 级就走出了包根。这里手动喂上索引，
+  // 用启发式检索（向量索引路径也错，跳过即可）。
+  if (语言 === "极快") {
+    py.runPython(`
+import os, json
+from jikuai.ai import retrieval as _R
+_idx = '/极快/stdlib/blocks/索引.json'
+if os.path.isfile(_idx) and _R._cached_retriever is None:
+    with open(_idx, 'r', encoding='utf-8') as _f:
+        _blocks = json.load(_f).get('块', [])
+    _R._cached_retriever = _R.Retriever(_blocks, vector_index=None)
+`);
+  }
   _语言就绪.add(语言);
 }
 
@@ -113,7 +129,21 @@ json.dumps({"stdout": _buf.getvalue(), "返回值": repr(_ret) if _ret is not No
 };
 
 self.addEventListener("message", async (e) => {
-  const { 类型, 语言, 源码, 会话id } = e.data;
+  const { 类型, 语言, 源码, 会话id, 依赖语言 } = e.data;
+  if (类型 === "跑Python") {
+    // 直接跑 Python 代码（选块/组码等辅助调用），需先准备好依赖语言的包
+    // 返回值：Python 代码末行表达式（通常是 json.dumps(...) 出来的字符串），
+    // 打包成 {stdout: 原始} —— 与语言桥消息格式保持一致，调用方自己 JSON.parse。
+    try {
+      await 准备语言(依赖语言 || "极快");
+      const py = _py;
+      const 原始 = py.runPython(源码);
+      postMessage({ 类型: "结果", 会话id, stdout: 原始 == null ? "" : String(原始), 返回值: null });
+    } catch (err) {
+      postMessage({ 类型: "错误", 会话id, 消息: String(err.message || err) });
+    }
+    return;
+  }
   if (类型 !== "跑") return;
   try {
     await 准备语言(语言);

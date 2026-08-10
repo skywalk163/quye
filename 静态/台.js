@@ -37,14 +37,14 @@ function 弃worker() {
   _会话回调.clear();
 }
 
-function 跑代码(语言, 源码) {
+function 发消息(消息) {
   return new Promise((resolve, reject) => {
     const id = ++_会话id;
     _会话回调.set(id, (data) => {
       if (data.类型 === '结果') resolve(data);
       else reject(new Error(data.消息));
     });
-    取worker().postMessage({ 类型: '跑', 语言, 源码, 会话id: id });
+    取worker().postMessage({ ...消息, 会话id: id });
     setTimeout(() => {
       if (_会话回调.has(id)) {
         弃worker();
@@ -53,6 +53,16 @@ function 跑代码(语言, 源码) {
       }
     }, 超时毫秒);
   });
+}
+
+// 跑某门语言的源码（走语言桥，源码是该语言的语法）
+function 跑代码(语言, 源码) {
+  return 发消息({ 类型: '跑', 语言, 源码 });
+}
+
+// 直跑 Python（选块/组码等辅助调用，源码是 Python 而非中文语言语法）
+function 跑Python(依赖语言, 源码) {
+  return 发消息({ 类型: '跑Python', 依赖语言, 源码 });
 }
 
 function 转义(s) {
@@ -105,11 +115,11 @@ document.getElementById('选块').addEventListener('click', async () => {
 import json
 from jikuai.ai.retrieval import retrieve
 _res = retrieve(${JSON.stringify(需求)}, top=5)
-print(json.dumps([{'名称': r.name, '领域': r.domain, '分数': r.score, '路径': r.path} for r in _res], ensure_ascii=False))
+json.dumps([{'名称': r.name, '领域': r.domain, '分数': r.score, '路径': r.path} for r in _res], ensure_ascii=False)
 `;
   try {
-    const r = await 跑代码('极快', 选块代码);
-    const 候选 = JSON.parse(r.stdout.trim().split('\n').pop() || '[]');
+    const r = await 跑Python('极快', 选块代码);
+    const 候选 = JSON.parse(r.stdout || '[]');
     渲染候选(候选);
     状态.textContent = `选出 ${候选.length} 个候选块`;
   } catch (e) {
@@ -131,12 +141,12 @@ function 渲染候选(候选) {
       const c = 候选[Number(el.dataset.idx)];
       const 组码代码 = `
 from glue import synthesize
-方案 = {"步骤": [{"块": ${JSON.stringify(c.名称)}, "领域": ${JSON.stringify(c.领域)}}]}
-print(synthesize(方案))
+方案 = {"步骤": [{"块": ${JSON.stringify(c.名称)}, "领域": ${JSON.stringify(c.领域)}, "导出名": "结果1"}]}
+synthesize(方案)
 `;
       try {
-        const r = await 跑代码('极快', 组码代码);
-        document.getElementById('代码').value = r.stdout.trim();
+        const r = await 跑Python('极快', 组码代码);
+        document.getElementById('代码').value = (r.stdout || '').trim();
         document.getElementById('状态').textContent = `已组出 ${c.名称} 的代码`;
       } catch (e) {
         document.getElementById('状态').textContent = `[组码失败] ${e.message}`;
