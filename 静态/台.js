@@ -134,7 +134,14 @@ document.getElementById('选块').addEventListener('click', async () => {
 import json
 from jikuai.ai.retrieval import retrieve
 _res = retrieve(${JSON.stringify(需求)}, top=5)
-json.dumps([{'名称': r.name, '领域': r.domain, '分数': r.score, '路径': r.path} for r in _res], ensure_ascii=False)
+_blocks_data = json.loads(open('/极快/stdlib/blocks/索引.json', encoding='utf-8').read()).get('块', [])
+_block_map = {b['名称']: b for b in _blocks_data}
+_out = []
+for r in _res:
+    b = _block_map.get(r.name, {})
+    导出 = (b.get('导出') or [r.name])[0]
+    _out.append({'名称': r.name, '领域': r.domain, '分数': r.score, '导出名': 导出})
+json.dumps(_out, ensure_ascii=False)
 `;
   try {
     const r = await 跑Python('极快', 选块代码);
@@ -160,7 +167,7 @@ function 渲染候选(候选) {
       const c = 候选[Number(el.dataset.idx)];
       const 组码代码 = `
 from glue import synthesize
-方案 = {"步骤": [{"块": ${JSON.stringify(c.名称)}, "领域": ${JSON.stringify(c.领域)}, "导出名": "结果1"}]}
+方案 = {"步骤": [{"块": ${JSON.stringify(c.名称)}, "领域": ${JSON.stringify(c.领域)}, "导出名": ${JSON.stringify(c.导出名 || c.名称)}}]}
 synthesize(方案)
 `;
       try {
