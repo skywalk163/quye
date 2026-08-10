@@ -1,30 +1,37 @@
 // 工作台主逻辑：语言切换、直跑、极快选块-组码-跑
-const 超时毫秒 = 5000;
+// 两段超时：加载阶段（Pyodide 冷启 + 语言包挂载）宽松，执行阶段严格 5 秒。
+// Worker 在 准备语言 完成后回一条 {类型:"开始执行"}，主线程收到后才切到 5 秒表。
+const 加载超时毫秒 = 180000;
+const 执行超时毫秒 = 5000;
 
 let _worker = null;
 let _会话id = 0;
-const _会话回调 = new Map();
+const _会话 = new Map();
+
+function 设状态(文本) {
+  document.getElementById('状态').textContent = 文本;
+}
 
 function 收消息(e) {
   const { 会话id, 类型 } = e.data;
   if (类型 === '进度') {
-    document.getElementById('状态').textContent = e.data.消息;
+    设状态(e.data.消息);
     return;
   }
-  const cb = _会话回调.get(会话id);
-  if (cb) {
-    _会话回调.delete(会话id);
-    cb(e.data);
+  const 会话 = _会话.get(会话id);
+  if (!会话) return;
+  if (类型 === '开始执行') {
+    会话.开始执行();
+    return;
   }
+  会话.收尾(e.data);
 }
 
 function 取worker() {
   if (_worker) return _worker;
   _worker = new Worker('/静态/执行器.js');
   _worker.addEventListener('message', 收消息);
-  _worker.addEventListener('error', (e) => {
-    document.getElementById('状态').textContent = `Worker 异常：${e.message}`;
-  });
+  _worker.addEventListener('error', (e) => 设状态(`Worker 异常：${e.message}`));
   return _worker;
 }
 
@@ -34,24 +41,36 @@ function 弃worker() {
     _worker.terminate();
     _worker = null;
   }
-  _会话回调.clear();
+  _会话.clear();
 }
 
 function 发消息(消息) {
   return new Promise((resolve, reject) => {
     const id = ++_会话id;
-    _会话回调.set(id, (data) => {
-      if (data.类型 === '结果') resolve(data);
-      else reject(new Error(data.消息));
-    });
-    取worker().postMessage({ ...消息, 会话id: id });
-    setTimeout(() => {
-      if (_会话回调.has(id)) {
+    let 定时器 = null;
+
+    const 起表 = (毫秒, 说明) => {
+      if (定时器) clearTimeout(定时器);
+      定时器 = setTimeout(() => {
+        _会话.delete(id);
         弃worker();
-        document.getElementById('状态').textContent = '已中止，下次运行会重新加载 Pyodide';
-        reject(new Error(`执行超时 ${超时毫秒}ms，Worker 已中止`));
-      }
-    }, 超时毫秒);
+        设状态(`已中止：${说明}。下次运行会重新加载 Pyodide`);
+        reject(new Error(`${说明}（超过 ${毫秒 / 1000} 秒），Worker 已中止`));
+      }, 毫秒);
+    };
+
+    _会话.set(id, {
+      开始执行: () => 起表(执行超时毫秒, '执行超时'),
+      收尾: (data) => {
+        if (定时器) clearTimeout(定时器);
+        _会话.delete(id);
+        if (data.类型 === '结果') resolve(data);
+        else reject(new Error(data.消息));
+      },
+    });
+
+    起表(加载超时毫秒, '加载超时');
+    取worker().postMessage({ ...消息, 会话id: id });
   });
 }
 

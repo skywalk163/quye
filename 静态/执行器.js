@@ -2,7 +2,9 @@
 // 消息协议：
 //   主线程 → Worker: {类型:"跑", 语言, 源码, 会话id}
 //                    {类型:"跑Python", 依赖语言, 源码, 会话id}  // 直跑 Python，绕开语言桥
-//   Worker → 主线程: {类型:"结果"|"错误"|"进度", 会话id, ...}
+//   Worker → 主线程: {类型:"进度", 消息}                      // 加载阶段的状态文本
+//                    {类型:"开始执行", 会话id}                 // 准备完毕，主线程此时才起 5 秒表
+//                    {类型:"结果"|"错误", 会话id, ...}
 
 self.PYODIDE_VERSION = "0.26.4";
 const 自托管 = "/静态/pyodide/";
@@ -136,6 +138,7 @@ self.addEventListener("message", async (e) => {
     // 打包成 {stdout: 原始} —— 与语言桥消息格式保持一致，调用方自己 JSON.parse。
     try {
       await 准备语言(依赖语言 || "极快");
+      postMessage({ 类型: "开始执行", 会话id });  // 加载已完成，主线程此刻才开始 5 秒计时
       const py = _py;
       const 原始 = py.runPython(源码);
       postMessage({ 类型: "结果", 会话id, stdout: 原始 == null ? "" : String(原始), 返回值: null });
@@ -147,6 +150,7 @@ self.addEventListener("message", async (e) => {
   if (类型 !== "跑") return;
   try {
     await 准备语言(语言);
+    postMessage({ 类型: "开始执行", 会话id });  // 加载已完成，主线程此刻才开始 5 秒计时
     const py = _py;
     const 代码 = 桥[语言];
     if (!代码) throw new Error(`未知语言：${语言}`);
