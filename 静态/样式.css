@@ -175,3 +175,12 @@ main p code { background: #f0f0f0; padding: 0.1em 0.4em; border-radius: 3px; }
 .代码段 textarea { width: 100%; padding: 12px; font-family: "JetBrains Mono", monospace; font-size: 0.95rem; border: 1px solid #ddd; border-radius: 6px; resize: vertical; }
 .按钮组 { margin-top: 8px; }
 .结果 { background: #1e1e2e; color: #e0e0e0; padding: 16px; border-radius: 6px; min-height: 80px; white-space: pre-wrap; font-family: "JetBrains Mono", monospace; }
+
+/* 对照页 */
+.对照-选例 { margin-bottom: var(--间-基); }
+.对照-网格 { display: grid; grid-template-columns: repeat(2, 1fr); gap: var(--间-基); }
+@media (min-width: 900px) { .对照-网格 { grid-template-columns: repeat(4, 1fr); } }
+.对照-格 { display: grid; gap: 6px; background: var(--色-卡背景); border: 1px solid #eee; border-radius: 8px; padding: 12px; }
+.对照-格 textarea { font-family: "JetBrains Mono", monospace; font-size: 0.85rem; border: 1px solid #ddd; border-radius: 4px; padding: 8px; resize: vertical; }
+.对照-格 button { align-self: start; padding: 4px 10px; background: var(--色-强调); color: #fff; border: 0; border-radius: 4px; cursor: pointer; }
+.对照-格 .结果 { background: #1e1e2e; color: #e0e0e0; padding: 8px; border-radius: 4px; font-family: "JetBrains Mono", monospace; font-size: 0.8rem; min-height: 40px; white-space: pre-wrap; }

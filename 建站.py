@@ -287,6 +287,16 @@ def 构建工作台(版本: dict):
     (工作台目录 / "index.html").write_text(html, encoding="utf-8")
 
 
+def 构建对照(版本: dict):
+    md = (源目录 / "对照.md").read_text(encoding="utf-8")
+    内容顶部 = 简易md转html(md)
+    body = (模板目录 / "对照.html").read_text(encoding="utf-8")
+    html = 渲染页面("对照 — quye", 内容顶部 + body + '\n<script src="/静态/对照.js"></script>', 版本)
+    目录 = OUT / "对照"
+    目录.mkdir(parents=True, exist_ok=True)
+    (目录 / "index.html").write_text(html, encoding="utf-8")
+
+
 def 复制静态():
     目标 = OUT / "静态"
     if 目标.exists():
@@ -317,11 +327,21 @@ def main():
     构建路线图(版本)
     print("  构建工作台...")
     构建工作台(版本)
+    print("  构建对照...")
+    构建对照(版本)
     print("  复制静态资源...")
     复制静态()
     # 抽取语言包必须在 复制静态 之后：复制静态会 rmtree 出/静态 再重建
     print("  抽取语言包...")
     抽取语言包(版本)
+    # 预跑必须在 抽取语言包 之后：它要用 出/静态/py/<语言> 里的解释器
+    print("  复制示例集...")
+    数据目录 = OUT / "数据"
+    数据目录.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(ROOT / "数据" / "示例集.json", 数据目录 / "示例集.json")
+    print("  预跑示例...")
+    import 预跑器
+    预跑器.预跑(数据目录, OUT / "静态" / "py")
     print("  自托管 Pyodide...")
     下载pyodide()
     写版本文件(版本)
