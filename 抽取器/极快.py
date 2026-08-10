@@ -1,10 +1,62 @@
 """从极快仓库抽取核心链路。
 
 来源：src/jikuai/ + stdlib/ + tools/ai-bridge/glue.py + --check/索引.json
-去除：pkg/sources.py（git subprocess）
+替换：pkg/sources.py（原文件走 git subprocess，浏览器不可用）
+
+关于布局：jikuai 包落在 <目标>/jikuai/，stdlib 落在 <目标>/stdlib/。
+`module_loader._search_paths` 用 `__file__ + '../../stdlib'` 定位标准库
+（即 <目标>/stdlib），这个假设在本布局下成立，块生态 `blocks.财务.个税`
+可以正常解析。但 `ai/retrieval.py` 用的是上 3 级（假设自己在
+<repo>/src/jikuai/ai/），在本布局下会走出包根——那一处由
+静态/执行器.js 的 准备语言() 热补丁兜住。
 """
 import shutil
 from pathlib import Path
+
+# pkg/sources.py 的浏览器替身：保留 __all__ 全部公开签名，import 阶段绝不失败，
+# 只有真正调用抓取逻辑时才抛错。原文件依赖 git subprocess + 网络。
+# 下游 import 者：pkg/__init__.py(SourceError)、pkg/resolver.py(全部 4 个)、
+# pkg/installer.py(FetchedSource, compute_checksum)、pkg/registry.py(compute_checksum)。
+SOURCES_替身 = '''"""浏览器替身：原 sources.py 走 git subprocess + 网络，在 Pyodide 中不可用。
+
+保留 __all__ 的全部公开签名，让 pkg.resolver / pkg.installer / pkg.registry
+的模块级 import 正常通过；真正触发包抓取时才抛 RuntimeError。
+"""
+import os
+from typing import Tuple
+
+__all__ = [
+    'SourceError', 'FetchedSource',
+    'resolve_source', 'compute_checksum',
+]
+
+_不可用 = "包管理器在浏览器（Pyodide）中不可用：原实现依赖 git subprocess 与网络"
+
+
+class SourceError(Exception):
+    """来源抓取失败：路径不存在、git 出错、来源类型不支持等。"""
+
+
+class FetchedSource:
+    """一次抓取的结果：包源码根目录 + 清单 + 若干坐标信息。"""
+
+    __slots__ = ('root', 'manifest', 'kind', 'origin', 'ephemeral')
+
+    def __init__(self, root, manifest, kind, origin, ephemeral):
+        self.root = os.path.abspath(root)
+        self.manifest = manifest
+        self.kind = kind
+        self.origin = origin
+        self.ephemeral = ephemeral
+
+
+def resolve_source(dep, base_dir):
+    raise SourceError(_不可用)
+
+
+def compute_checksum(directory: str) -> Tuple[str, int]:
+    raise RuntimeError(_不可用)
+'''
 
 
 def 抽取(仓库根: Path, 目标: Path) -> None:
@@ -16,18 +68,12 @@ def 抽取(仓库根: Path, 目标: Path) -> None:
         raise FileNotFoundError(f"极快源码目录不存在：{src}")
     shutil.copytree(src, 目标 / "jikuai", dirs_exist_ok=True)
 
-    # 移除浏览器碰不到的模块
+    # 用保留签名的替身换掉走 git subprocess 的 sources.py
     坑 = 目标 / "jikuai" / "pkg" / "sources.py"
     if 坑.exists():
-        # 用空实现替换，避免 evaluator 里的可选 import 报错
-        坑.write_text(
-            '"""在浏览器环境中被替换为空 stub。原文件走 git subprocess。"""\n'
-            'def _unavailable(*a, **kw):\n'
-            '    raise RuntimeError("包管理器在浏览器中不可用")\n',
-            encoding="utf-8"
-        )
+        坑.write_text(SOURCES_替身, encoding="utf-8")
 
-    # stdlib
+    # stdlib（含 blocks/ 块生态与 索引.json / 向量索引.bin）
     stdlib源 = 仓库根 / "stdlib"
     if stdlib源.exists():
         shutil.copytree(stdlib源, 目标 / "stdlib", dirs_exist_ok=True)

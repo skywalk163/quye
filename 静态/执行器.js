@@ -52,13 +52,17 @@ import sys
 if '/${语言}' not in sys.path:
     sys.path.insert(0, '/${语言}')
 `);
-  // 极快专属补丁：retrieval.py 用 __file__ 往上 3 级定位 stdlib/blocks/，
-  // 这假设 retrieval 在 <repo>/src/jikuai/ai/，但 Pyodide FS 里落在
-  // /极快/jikuai/ai/（只有 2 层深度），上 3 级就走出了包根。这里手动喂上索引，
-  // 用启发式检索（向量索引路径也错，跳过即可）。
+  // 极快专属两处补丁：
+  // 1) JIKUAI_PATH —— module_loader._search_paths 用 `__file__ + '../../stdlib'`
+  //    定位标准库，在 /极快/jikuai/ 布局下算出 /极快/stdlib（正确）；但保险起见
+  //    显式声明，这样 `从 blocks.财务.个税 导入 缴税。` 一定能解析到
+  //    /极快/stdlib/blocks/财务/个税/个税.jk。
+  // 2) retrieval 索引 —— ai/retrieval.py 用 `__file__` 往上 3 级（假设自己在
+  //    <repo>/src/jikuai/ai/），本布局只有 2 层，上 3 级会走出包根。手动喂索引。
   if (语言 === "极快") {
     py.runPython(`
 import os, json
+os.environ['JIKUAI_PATH'] = '/极快/stdlib'
 from jikuai.ai import retrieval as _R
 _idx = '/极快/stdlib/blocks/索引.json'
 if os.path.isfile(_idx) and _R._cached_retriever is None:

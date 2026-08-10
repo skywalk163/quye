@@ -72,5 +72,6 @@ git push gitcode main
 ## 已知限制
 
 - **极快选块走启发式（TF-IDF）而非向量检索**。极快 `retrieval.py` 用 `__file__` 往上 3 级定位 `stdlib/blocks/`，这假设自己在 `<repo>/src/jikuai/ai/`；但抽取后落在 `/极快/jikuai/ai/`（只有 2 层），上 3 级会走出包根。`执行器.js` 的 `准备语言()` 里做了热补丁，手动喂上 `索引.json`（105 个块）并以 `vector_index=None` 构造 Retriever。向量索引路径同样错，暂时跳过。彻底修法是让抽取器还原 `src/` 层级，留给 M3。
+- **组码骨架带 `?` 占位符**：极快 `synthesize` 只搭结构，参数需人工替换后才能跑（如 `缴税(?)` → `缴税(20000)`）。
 - **首次加载语言包是逐文件 fetch**，极快有 394 个文件 → 几百次串行请求。功能可用但偏慢，M3 可改为构建期打 zip + `shutil.unpack_archive`。
 - `取版本()` 偶尔报「双端不同步」，只是提示（gitcode 与 github 的 HEAD 不一致），不阻断构建。
