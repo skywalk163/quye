@@ -151,6 +151,41 @@ def 抽取语言包(版本: dict) -> None:
 
 
 
+PYODIDE_VERSION = "0.26.4"
+PYODIDE_BASE = f"https://cdn.jsdelivr.net/pyodide/v{PYODIDE_VERSION}/full"
+# Pyodide 核心资产（用户点"跑"前不加载，但预先自托管以备）
+PYODIDE_ASSETS = [
+    "pyodide.js",
+    "pyodide.mjs",
+    "pyodide.asm.js",
+    "pyodide.asm.wasm",
+    "pyodide-lock.json",
+    "python_stdlib.zip",
+]
+
+
+def 下载pyodide() -> None:
+    """自托管 Pyodide 关键资产。已存在则跳过；拉取失败不阻塞构建（用户端降级 CDN）。"""
+    import urllib.request
+    目标 = OUT / "静态" / "pyodide"
+    目标.mkdir(parents=True, exist_ok=True)
+    # 缓存目录：避免每次构建重下（.build_cache 已 gitignore）
+    缓存 = BUILD_CACHE / "pyodide"
+    缓存.mkdir(parents=True, exist_ok=True)
+    for name in PYODIDE_ASSETS:
+        缓存文件 = 缓存 / name
+        if not (缓存文件.exists() and 缓存文件.stat().st_size > 1000):
+            url = f"{PYODIDE_BASE}/{name}"
+            print(f"    拉 {name}...")
+            try:
+                urllib.request.urlretrieve(url, 缓存文件)
+            except Exception as e:
+                print(f"    ! 拉 {name} 失败：{str(e)[:80]}；用户端将降级到 CDN")
+                continue
+        # 从缓存复制到产物
+        shutil.copy2(缓存文件, 目标 / name)
+
+
 def 简易md转html(md: str) -> str:
     """极简 markdown→HTML：标题、段落、列表、代码块、粗体。不引第三方库。"""
     lines = md.split("\n")
@@ -275,6 +310,8 @@ def main():
     # 抽取语言包必须在 复制静态 之后：复制静态会 rmtree 出/静态 再重建
     print("  抽取语言包...")
     抽取语言包(版本)
+    print("  自托管 Pyodide...")
+    下载pyodide()
     写版本文件(版本)
     print(f"[quye] 构建完成 -> {OUT}")
 
