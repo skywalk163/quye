@@ -1,0 +1,158 @@
+/* quye.com 全站样式 — 手写，无框架 */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --色-主: #1a1a2e;
+  --色-强调: #16a085;
+  --色-背景: #fafafa;
+  --色-卡背景: #ffffff;
+  --色-文字: #2c3e50;
+  --色-浅字: #7f8c8d;
+  --宽-最大: 1080px;
+  --间-基: 1rem;
+}
+
+body {
+  font-family: "PingFang SC", "Noto Sans SC", "Microsoft YaHei", sans-serif;
+  color: var(--色-文字);
+  background: var(--色-背景);
+  line-height: 1.7;
+}
+
+/* 导航 */
+.顶栏 {
+  display: flex;
+  align-items: center;
+  gap: var(--间-基);
+  max-width: var(--宽-最大);
+  margin: 0 auto;
+  padding: var(--间-基) calc(var(--间-基) * 1.5);
+}
+.logo {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--色-主);
+  text-decoration: none;
+}
+.导航链接 { display: flex; gap: calc(var(--间-基) * 1.2); margin-left: auto; }
+.导航链接 a, .外链 {
+  color: var(--色-文字);
+  text-decoration: none;
+  font-size: 0.9rem;
+}
+.导航链接 a:hover, .外链:hover { color: var(--色-强调); }
+.外链 { margin-left: calc(var(--间-基) * 0.5); }
+
+/* 主体 */
+main {
+  max-width: var(--宽-最大);
+  margin: 0 auto;
+  padding: calc(var(--间-基) * 2) calc(var(--间-基) * 1.5);
+}
+
+/* 首页 hero */
+.hero {
+  text-align: center;
+  padding: calc(var(--间-基) * 4) 0 calc(var(--间-基) * 2);
+}
+.hero h1 {
+  font-size: 2.2rem;
+  color: var(--色-主);
+  margin-bottom: calc(var(--间-基) * 0.5);
+}
+.hero .副标题 {
+  color: var(--色-浅字);
+  font-size: 1.05rem;
+  margin-bottom: calc(var(--间-基) * 2);
+}
+.主入口 {
+  display: flex;
+  gap: var(--间-基);
+  justify-content: center;
+  flex-wrap: wrap;
+}
+.主入口 a {
+  display: inline-block;
+  padding: calc(var(--间-基) * 0.8) calc(var(--间-基) * 2);
+  border-radius: 6px;
+  text-decoration: none;
+  font-weight: 600;
+  font-size: 1rem;
+}
+.按钮-主 { background: var(--色-强调); color: #fff; }
+.按钮-次 { background: var(--色-卡背景); color: var(--色-文字); border: 1px solid #ddd; }
+.按钮-主:hover { opacity: 0.9; }
+.按钮-次:hover { border-color: var(--色-强调); color: var(--色-强调); }
+
+/* 语言卡片 */
+.语言卡片组 {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: var(--间-基);
+  margin: calc(var(--间-基) * 2) 0;
+}
+.语言卡片 {
+  background: var(--色-卡背景);
+  border: 1px solid #eee;
+  border-radius: 8px;
+  padding: calc(var(--间-基) * 1.5);
+  text-decoration: none;
+  color: var(--色-文字);
+  transition: box-shadow 0.2s;
+}
+.语言卡片:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
+.语言卡片 h3 { font-size: 1.1rem; margin-bottom: 0.3rem; }
+.语言卡片 .标签 { font-size: 0.85rem; color: var(--色-浅字); }
+
+/* 讨论区组件 */
+.讨论区 {
+  max-width: var(--宽-最大);
+  margin: calc(var(--间-基) * 3) auto calc(var(--间-基) * 1);
+  padding: 0 calc(var(--间-基) * 1.5);
+}
+.讨论区 h3 { font-size: 1rem; margin-bottom: var(--间-基); }
+.讨论区-卡片组 { display: flex; gap: var(--间-基); flex-wrap: wrap; }
+.讨论区-卡片 {
+  flex: 1;
+  min-width: 200px;
+  background: var(--色-卡背景);
+  border: 2px solid #eee;
+  border-radius: 8px;
+  padding: var(--间-基);
+  text-decoration: none;
+  color: var(--色-文字);
+}
+.讨论区-卡片.推荐 { border-color: var(--色-强调); }
+.讨论区-卡片:hover { border-color: var(--色-强调); }
+
+/* 页脚 */
+footer {
+  border-top: 1px solid #eee;
+  padding: calc(var(--间-基) * 2) 0;
+}
+.版本信息 {
+  max-width: var(--宽-最大);
+  margin: var(--间-基) auto 0;
+  padding: 0 calc(var(--间-基) * 1.5);
+  color: var(--色-浅字);
+  font-size: 0.8rem;
+}
+
+/* markdown 渲染内容 */
+main h1 { font-size: 1.8rem; margin: 1.5rem 0 0.8rem; }
+main h2 { font-size: 1.4rem; margin: 1.3rem 0 0.6rem; border-bottom: 1px solid #eee; padding-bottom: 0.3rem; }
+main h3 { font-size: 1.15rem; margin: 1rem 0 0.5rem; }
+main p { margin: 0.6rem 0; }
+main ul { margin: 0.5rem 0 0.5rem 1.5rem; }
+main li { margin: 0.3rem 0; }
+main pre { background: #f5f5f5; padding: 1rem; border-radius: 6px; overflow-x: auto; margin: 0.8rem 0; }
+main code { font-family: "JetBrains Mono", "Fira Code", monospace; font-size: 0.9em; }
+main p code { background: #f0f0f0; padding: 0.1em 0.4em; border-radius: 3px; }
+
+/* 响应式 */
+@media (max-width: 640px) {
+  .顶栏 { flex-wrap: wrap; }
+  .导航链接 { gap: calc(var(--间-基) * 0.8); font-size: 0.85rem; }
+  .hero h1 { font-size: 1.6rem; }
+  .语言卡片组 { grid-template-columns: 1fr 1fr; }
+}
