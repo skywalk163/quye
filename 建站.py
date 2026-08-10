@@ -58,6 +58,98 @@ def 取版本() -> dict:
     return 版本
 
 
+BUILD_CACHE = ROOT / ".build_cache"
+
+# 本地开发时可用的已有仓库路径（避免网络 clone）
+# CI 环境中这些路径不存在，会自动回退到 git clone
+LOCAL_REPOS = {
+    "极快": Path(r"G:\traework\jikuai"),
+    "段言": Path(r"C:\dumatework\duan"),
+    "光明": None,  # 本地无，强制 clone
+    "知行": Path(r"g:\zhixing"),
+}
+
+
+def 浅克隆(名: str, urls: dict) -> Path:
+    """获取语言仓库根目录。优先本地路径 → gitcode → github。"""
+    local = LOCAL_REPOS.get(名)
+    if local and local.exists():
+        print(f"    用本地路径 {local}")
+        return local
+
+    目标 = BUILD_CACHE / 名
+    if 目标.exists():
+        r = subprocess.run(
+            ["git", "-C", str(目标), "fetch", "--depth", "1", "origin", "HEAD"],
+            capture_output=True, text=True, timeout=120
+        )
+        if r.returncode == 0:
+            subprocess.run(
+                ["git", "-C", str(目标), "reset", "--hard", "FETCH_HEAD"],
+                capture_output=True, text=True, timeout=60
+            )
+        else:
+            print(f"    ! 更新 {名} 失败：{r.stderr.strip()[:100]}")
+        return 目标
+
+    目标.parent.mkdir(parents=True, exist_ok=True)
+    # 依次尝试 gitcode → github（国内网络优先内网）
+    错误汇总 = []
+    for 端 in ("gitcode", "github"):
+        url = urls[端]
+        print(f"    尝试 {端}: {url}")
+        r = subprocess.run(
+            ["git", "clone", "--depth", "1", url, str(目标)],
+            capture_output=True, text=True, timeout=300
+        )
+        if r.returncode == 0:
+            return 目标
+        错误汇总.append(f"{端}: {r.stderr.strip()[:150]}")
+        # 清理失败的目标
+        if 目标.exists():
+            import shutil as _s
+            _s.rmtree(目标, ignore_errors=True)
+    raise RuntimeError(f"克隆 {名} 双端均失败：{'; '.join(错误汇总)}")
+
+
+def 抽取语言包(版本: dict) -> None:
+    """按顺序调各语言抽取器。"""
+    from 抽取器 import 极快 as 极快抽取
+    from 抽取器 import 段言 as 段言抽取
+    from 抽取器 import 光明 as 光明抽取
+    from 抽取器 import 知行 as 知行抽取
+
+    映射 = {
+        "极快": (极快抽取.抽取, REPOS["极快"]),
+        "段言": (段言抽取.抽取, REPOS["段言"]),
+        "光明": (光明抽取.抽取, REPOS["光明"]),
+        "知行": (知行抽取.抽取, REPOS["知行"]),
+    }
+    py目标 = OUT / "静态" / "py"
+    py目标.mkdir(parents=True, exist_ok=True)
+    数据目标 = OUT / "数据"
+    数据目标.mkdir(parents=True, exist_ok=True)
+
+    for 名, (抽取fn, urls) in 映射.items():
+        print(f"    {名}...")
+        仓库根 = 浅克隆(名, urls)
+        抽取fn(仓库根, py目标 / 名)
+
+    # 为每门语言生成清单.json
+    for 名 in ["极快", "段言", "光明", "知行"]:
+        目录 = py目标 / 名
+        if not 目录.exists():
+            continue
+        文件s = []
+        for p in sorted(目录.rglob("*")):
+            if p.is_file() and p.suffix in {".py", ".jk", ".json"}:
+                文件s.append(p.relative_to(目录).as_posix())
+        (目录 / "清单.json").write_text(
+            json.dumps({"文件": 文件s}, ensure_ascii=False, indent=2),
+            encoding="utf-8"
+        )
+
+
 
 def 简易md转html(md: str) -> str:
     """极简 markdown→HTML：标题、段落、列表、代码块、粗体。不引第三方库。"""
@@ -180,6 +272,9 @@ def main():
     构建路线图(版本)
     print("  复制静态资源...")
     复制静态()
+    # 抽取语言包必须在 复制静态 之后：复制静态会 rmtree 出/静态 再重建
+    print("  抽取语言包...")
+    抽取语言包(版本)
     写版本文件(版本)
     print(f"[quye] 构建完成 -> {OUT}")
 
