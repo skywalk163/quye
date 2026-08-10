@@ -4,6 +4,9 @@
 排除：pkg_manager.py（subprocess）
 补丁 stdlib/loader.py：从 DEFAULT_LIBS 精确删除 c_lib/net_lib/db_lib 三行
 （浏览器 Pyodide 里 ctypes/urllib/sqlite3 不可用）
+
+落地为 <目标>/zhixing/ 嵌套包：源码内既有相对导入（from ..compiler.ast）
+又有绝对导入（from zhixing.stdlib.xxx），平铺到目标根会两头都断。
 """
 import shutil
 from pathlib import Path
@@ -18,6 +21,7 @@ def 抽取(仓库根: Path, 目标: Path) -> None:
     if not src.exists():
         raise FileNotFoundError(f"知行源码目录不存在：{src}")
 
+    包根 = 目标 / "zhixing"
     抽出 = 0
     for p in src.rglob("*.py"):
         if any(部分 in 跳过目录 for 部分 in p.relative_to(src).parts):
@@ -25,7 +29,7 @@ def 抽取(仓库根: Path, 目标: Path) -> None:
         if p.name in 跳过:
             continue
         rel = p.relative_to(src)
-        目标文件 = 目标 / rel
+        目标文件 = 包根 / rel
         目标文件.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(p, 目标文件)
         抽出 += 1
@@ -33,7 +37,7 @@ def 抽取(仓库根: Path, 目标: Path) -> None:
         raise RuntimeError(f"知行抽取失败：只抽到 {抽出} 个 .py")
 
     # loader.py 补丁：精确删除 DEFAULT_LIBS 里的三个模块行
-    loader = 目标 / "stdlib" / "loader.py"
+    loader = 包根 / "stdlib" / "loader.py"
     if loader.exists():
         文本 = loader.read_text(encoding="utf-8")
         if "# quye-patched" in 文本:
