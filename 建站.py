@@ -277,6 +277,16 @@ def 构建路线图(版本: dict):
     (路线图目录 / "index.html").write_text(html, encoding="utf-8")
 
 
+def 构建工作台(版本: dict):
+    md = (源目录 / "台.md").read_text(encoding="utf-8")
+    内容顶部 = 简易md转html(md)
+    body = (模板目录 / "台.html").read_text(encoding="utf-8")
+    html = 渲染页面("工作台 — quye", 内容顶部 + body + '\n<script src="/静态/台.js"></script>', 版本)
+    工作台目录 = OUT / "台"
+    工作台目录.mkdir(parents=True, exist_ok=True)
+    (工作台目录 / "index.html").write_text(html, encoding="utf-8")
+
+
 def 复制静态():
     目标 = OUT / "静态"
     if 目标.exists():
@@ -305,6 +315,8 @@ def main():
     构建语言页(版本)
     print("  构建路线图...")
     构建路线图(版本)
+    print("  构建工作台...")
+    构建工作台(版本)
     print("  复制静态资源...")
     复制静态()
     # 抽取语言包必须在 复制静态 之后：复制静态会 rmtree 出/静态 再重建

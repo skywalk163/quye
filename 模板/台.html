@@ -1,0 +1,30 @@
+<section class="工作台">
+  <div class="工作台-顶部">
+    <label>语言：
+      <select id="语言选择">
+        <option value="极快">极快</option>
+        <option value="段言">段言</option>
+        <option value="光明">光明</option>
+        <option value="知行">知行</option>
+      </select>
+    </label>
+    <span id="状态" class="状态">未加载 Pyodide（点跑时自动加载）</span>
+  </div>
+
+  <div class="需求段 极快专属">
+    <input id="需求" type="text" placeholder="你想干什么？例如：月薪两万个税多少" />
+    <button id="选块">选块</button>
+  </div>
+
+  <div id="候选" class="候选 极快专属"></div>
+
+  <div class="代码段">
+    <textarea id="代码" placeholder="或者直接写代码" rows="8"></textarea>
+    <div class="按钮组">
+      <button id="跑">跑 (Ctrl+Enter)</button>
+      <button id="清空">清空</button>
+    </div>
+  </div>
+
+  <pre id="结果" class="结果"></pre>
+</section>

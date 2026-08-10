@@ -156,3 +156,22 @@ main p code { background: #f0f0f0; padding: 0.1em 0.4em; border-radius: 3px; }
   .hero h1 { font-size: 1.6rem; }
   .语言卡片组 { grid-template-columns: 1fr 1fr; }
 }
+
+/* 工作台 */
+.工作台 { display: grid; gap: var(--间-基); }
+.工作台-顶部 { display: flex; gap: var(--间-基); align-items: center; flex-wrap: wrap; }
+.工作台-顶部 label { font-size: 0.95rem; }
+.工作台-顶部 select { padding: 4px 8px; font-family: inherit; }
+.状态 { color: var(--色-浅字); font-size: 0.85rem; }
+.需求段 { display: flex; gap: 8px; }
+.需求段 input { flex: 1; padding: 8px 12px; border: 1px solid #ddd; border-radius: 6px; font-family: inherit; font-size: 1rem; }
+.需求段 button, .按钮组 button { padding: 8px 16px; background: var(--色-强调); color: #fff; border: 0; border-radius: 6px; font-family: inherit; cursor: pointer; }
+.按钮组 button + button { background: #eee; color: var(--色-文字); margin-left: 8px; }
+.候选 { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 8px; }
+.候选卡 { background: var(--色-卡背景); border: 1px solid #eee; border-radius: 6px; padding: 12px; cursor: pointer; }
+.候选卡:hover { border-color: var(--色-强调); }
+.候选名 { font-weight: 600; }
+.候选meta { color: var(--色-浅字); font-size: 0.85rem; margin-top: 4px; }
+.代码段 textarea { width: 100%; padding: 12px; font-family: "JetBrains Mono", monospace; font-size: 0.95rem; border: 1px solid #ddd; border-radius: 6px; resize: vertical; }
+.按钮组 { margin-top: 8px; }
+.结果 { background: #1e1e2e; color: #e0e0e0; padding: 16px; border-radius: 6px; min-height: 80px; white-space: pre-wrap; font-family: "JetBrains Mono", monospace; }
