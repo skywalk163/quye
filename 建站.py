@@ -149,6 +149,19 @@ def 抽取语言包(版本: dict) -> None:
             encoding="utf-8"
         )
 
+    # 每门语言额外打一个 zip，供 Worker 一次拉取解包（M2 遗留：394 文件串行 fetch 过慢）
+    import zipfile
+    for 名 in ["极快", "段言", "光明", "知行"]:
+        目录 = py目标 / 名
+        if not 目录.exists():
+            continue
+        zip路径 = py目标 / f"{名}.zip"
+        with zipfile.ZipFile(zip路径, "w", zipfile.ZIP_DEFLATED) as zf:
+            for p in sorted(目录.rglob("*")):
+                if p.is_file() and p.name != "清单.json":
+                    zf.write(p, p.relative_to(目录).as_posix())
+        print(f"    {名}.zip 打包 {zip路径.stat().st_size // 1024} KB")
+
 
 
 PYODIDE_VERSION = "0.26.4"

@@ -34,18 +34,32 @@ async function 准备语言(语言) {
   const py = await 初始化Pyodide();
   postMessage({ 类型: "进度", 消息: `加载 ${语言} 包...` });
 
-  // 从 /静态/py/<语言>/ 抓取 py 文件并挂到 Pyodide FS
-  const 根 = `/静态/py/${encodeURIComponent(语言)}/`;
-  const 清单 = await (await fetch(`${根}清单.json`)).json();
-  for (const 相对路径 of 清单.文件) {
-    const url = `${根}${相对路径}`;
-    const resp = await fetch(url);
-    if (!resp.ok) throw new Error(`加载失败：${url}`);
-    const 内容 = await resp.text();
-    const py路径 = `/${语言}/${相对路径}`;
-    const 目录 = py路径.split('/').slice(0, -1).join('/');
-    py.FS.mkdirTree(目录);
-    py.FS.writeFile(py路径, 内容, { encoding: "utf8" });
+  // 从 /静态/py/<语言>.zip 一次拉取 → Pyodide unpack_archive 解包到 /<语言>
+  // （M2 遗留：逐文件 fetch 极快 394 个太慢）；zip 拉取失败时回退逐文件清单
+  const zip地址 = `/静态/py/${encodeURIComponent(语言)}.zip`;
+  const 目标根 = `/${语言}`;
+  py.FS.mkdirTree(目标根);
+  let 用zip = false;
+  try {
+    const resp = await fetch(zip地址);
+    if (resp.ok) {
+      const buf = new Uint8Array(await resp.arrayBuffer());
+      py.unpackArchive(buf, "zip", { extractDir: 目标根 });
+      用zip = true;
+    }
+  } catch (e) {
+    postMessage({ 类型: "进度", 消息: `zip 解包失败，回退逐文件：${e.message}` });
+  }
+  if (!用zip) {
+    const 根 = `/静态/py/${encodeURIComponent(语言)}/`;
+    const 清单 = await (await fetch(`${根}清单.json`)).json();
+    for (const 相对路径 of 清单.文件) {
+      const resp = await fetch(`${根}${相对路径}`);
+      if (!resp.ok) throw new Error(`加载失败：${根}${相对路径}`);
+      const py路径 = `${目标根}/${相对路径}`;
+      py.FS.mkdirTree(py路径.split('/').slice(0, -1).join('/'));
+      py.FS.writeFile(py路径, await resp.text(), { encoding: "utf8" });
+    }
   }
   py.runPython(`
 import sys
