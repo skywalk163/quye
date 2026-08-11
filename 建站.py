@@ -216,6 +216,12 @@ def 下载pyodide() -> None:
         shutil.copy2(缓存文件, 目标 / name)
 
 
+def 转义(s) -> str:
+    """HTML 转义（模板注入用）。"""
+    return (str(s).replace("&", "&amp;").replace("<", "&lt;")
+            .replace(">", "&gt;").replace('"', "&quot;"))
+
+
 def 简易md转html(md: str) -> str:
     """极简 markdown→HTML：标题、段落、列表、代码块、粗体。不引第三方库。"""
     lines = md.split("\n")
@@ -261,10 +267,12 @@ def 简易md转html(md: str) -> str:
     return "\n".join(html_parts)
 
 
-def 渲染页面(标题: str, 内容html: str, 版本: dict) -> str:
-    """把内容嵌入基础模板。"""
+def 渲染页面(标题: str, 内容html: str, 版本: dict, 讨论语言: str = "极快") -> str:
+    """把内容嵌入基础模板。讨论语言决定页脚讨论区指向哪个语言仓库。"""
     模板 = (模板目录 / "基础.html").read_text(encoding="utf-8")
-    讨论区 = (源目录 / "片段" / "讨论区.html").read_text(encoding="utf-8")
+    讨论区 = (源目录 / "片段" / "讨论区.html").read_text(encoding="utf-8").replace(
+        "{{讨论语言}}", 讨论语言
+    )
     版本json = json.dumps(版本, ensure_ascii=False, indent=2)
     页脚版本 = " · ".join(
         f'{名} {v.get("gitcode", "?")}'
@@ -327,6 +335,66 @@ def 构建对照(版本: dict):
     (目录 / "index.html").write_text(html, encoding="utf-8")
 
 
+def 构建学习(版本: dict):
+    """学习区：索引页 + 19 个关卡页。依赖 出/数据/学习基线.json（预跑产出）。"""
+    清单 = json.loads((ROOT / "数据" / "学习清单.json").read_text(encoding="utf-8"))
+    基线 = json.loads((OUT / "数据" / "学习基线.json").read_text(encoding="utf-8"))
+    基线map = {(语言, x["关卡"]): x for 语言 in 基线 for x in 基线[语言]}
+    素材根 = OUT / "数据" / "学习素材"
+    学根 = OUT / "学"
+    学根.mkdir(parents=True, exist_ok=True)
+
+    # 索引页
+    项 = []
+    for 语言 in ("段言", "光明"):
+        项.append(f"<h2>{语言}</h2><ul class='关卡组'>")
+        for 条 in 清单[语言]:
+            关卡 = 条["关卡"]
+            项.append(
+                f"<li><a href='/学/{语言}/{关卡}/'>"
+                f"{条['序号']} · {转义(条['标题'])}</a></li>"
+            )
+        项.append("</ul>")
+    索引内容 = (模板目录 / "学索引.html").read_text(encoding="utf-8").replace(
+        "{{关卡列表}}", "\n".join(项)
+    )
+    md = (源目录 / "学.md").read_text(encoding="utf-8")
+    页 = 渲染页面(
+        "学习区 — quye",
+        简易md转html(md) + 索引内容 + '\n<script src="/静态/学.js"></script>',
+        版本,
+    )
+    (学根 / "index.html").write_text(页, encoding="utf-8")
+
+    # 关卡页
+    关卡模板 = (模板目录 / "学关卡.html").read_text(encoding="utf-8")
+    for 语言 in ("段言", "光明"):
+        for 条 in 清单[语言]:
+            关卡 = 条["关卡"]
+            素材 = 素材根 / 语言 / 关卡
+            题干 = 简易md转html((素材 / "题干.md").read_text(encoding="utf-8"))
+            骨架源 = 素材 / "骨架.txt"
+            骨架文本 = 骨架源.read_text(encoding="utf-8") if 骨架源.exists() else ""
+            骨架 = 骨架文本 if 骨架文本.strip() else ""
+            b = 基线map.get((语言, 关卡), {})
+            body = (关卡模板
+                    .replace("{{语言}}", 语言)
+                    .replace("{{关卡}}", 关卡)
+                    .replace("{{标题}}", 转义(f"{条['序号']} · {条['标题']}"))
+                    .replace("{{题干}}", 题干)
+                    .replace("{{骨架}}", 转义(骨架))
+                    .replace("{{在线可判}}", "1" if b.get("在线可判") else "0"))
+            页 = 渲染页面(
+                f"{条['标题']} — {语言}学习 — quye",
+                body + '\n<script src="/静态/学.js"></script>',
+                版本,
+                讨论语言=语言,
+            )
+            目录 = 学根 / 语言 / 关卡
+            目录.mkdir(parents=True, exist_ok=True)
+            (目录 / "index.html").write_text(页, encoding="utf-8")
+
+
 def 复制静态():
     目标 = OUT / "静态"
     if 目标.exists():
@@ -377,6 +445,8 @@ def main():
     预跑器.预跑(数据目录, OUT / "静态" / "py")
     print("  预跑学习基线...")
     预跑器.预跑学习基线(数据目录, OUT / "静态" / "py")
+    print("  构建学习区...")
+    构建学习(版本)
     print("  自托管 Pyodide...")
     下载pyodide()
     写版本文件(版本)

@@ -1,0 +1,17 @@
+<article class="学关卡" data-语言="{{语言}}" data-关卡="{{关卡}}" data-在线可判="{{在线可判}}">
+  <h1>{{标题}}</h1>
+  <div class="题干">{{题干}}</div>
+  <div class="关卡编辑">
+    <textarea id="代码" spellcheck="false" rows="10">{{骨架}}</textarea>
+    <div class="关卡工具">
+      <button id="跑">跑并判对 (Ctrl+Enter)</button>
+      <button id="看答案" type="button">看参考答案</button>
+      <span id="状态"></span>
+    </div>
+  </div>
+  <div class="关卡产出">
+    <div class="产出块"><h4>你的输出</h4><pre id="结果"></pre></div>
+    <div class="产出块"><h4>预期输出</h4><pre id="预期"></pre></div>
+  </div>
+  <pre id="参考答案" hidden></pre>
+</article>
