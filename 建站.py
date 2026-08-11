@@ -164,6 +164,19 @@ def 抽取语言包(版本: dict) -> None:
 
 
 
+def 抽取学习素材() -> None:
+    """抽段言 10 套练习 + 光明 9 课到 出/数据/学习素材/。
+
+    浅克隆() 幂等（本地路径直接返回；缓存已存在则 fetch 更新），
+    这里二次调用不会重复 clone。
+    """
+    from 抽取器 import 学习 as 学习抽取
+    段言根 = 浅克隆("段言", REPOS["段言"])
+    光明根 = 浅克隆("光明", REPOS["光明"])
+    清单 = json.loads((ROOT / "数据" / "学习清单.json").read_text(encoding="utf-8"))
+    学习抽取.抽取(段言根, 光明根, OUT / "数据" / "学习素材", 清单)
+
+
 PYODIDE_VERSION = "0.26.4"
 PYODIDE_BASE = f"https://cdn.jsdelivr.net/pyodide/v{PYODIDE_VERSION}/full"
 # Pyodide 核心资产（用户点"跑"前不加载，但预先自托管以备）
@@ -347,6 +360,9 @@ def main():
     # 抽取语言包必须在 复制静态 之后：复制静态会 rmtree 出/静态 再重建
     print("  抽取语言包...")
     抽取语言包(版本)
+    # 抽取学习素材
+    print("  抽取学习素材...")
+    抽取学习素材()
     # 预跑必须在 抽取语言包 之后：它要用 出/静态/py/<语言> 里的解释器
     print("  复制示例集...")
     数据目录 = OUT / "数据"
