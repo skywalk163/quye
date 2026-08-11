@@ -140,7 +140,10 @@ _out = []
 for r in _res:
     b = _block_map.get(r.name, {})
     导出 = (b.get('导出') or [r.name])[0]
-    _out.append({'名称': r.name, '领域': r.domain, '分数': r.score, '导出名': 导出})
+    _out.append({
+        '名称': r.name, '领域': r.domain, '分数': r.score,
+        '导出名': 导出, '输入': b.get('输入', []),
+    })
 json.dumps(_out, ensure_ascii=False)
 `;
   try {
@@ -153,6 +156,30 @@ json.dumps(_out, ensure_ascii=False)
     状态.textContent = '选块失败';
   }
 });
+
+// 按入参名/类型猜一个合理的示例值。块名多是中文财务/数据领域，
+// 命中名字用领域常识，否则按类型兜底。
+const _示例值表 = {
+  月收: 20000, 含税: 17202, 不含税: 15000, 税率: 0.13,
+  本金: 100000, 年利率: 0.05, 月利率: 0.004, 期数: 12, 月数: 12, 年数: 5,
+  金额: 10000, 数值: 100, 分数: 85, 折现率: 0.08, 现值: 10000, 终值: 12000,
+};
+function 示例参数(输入项) {
+  const 名 = 输入项.名 || '';
+  if (名 in _示例值表) return String(_示例值表[名]);
+  const 类型 = 输入项.类型 || '数';
+  if (类型 === '数') return '100';
+  if (类型 === '文' || 类型 === '串' || 类型 === '文本') return '"示例"';
+  if (类型 === '真假' || 类型 === '布尔') return '真';
+  return '100';
+}
+
+// 把 synthesize 产出的 `名(?)` 占位替换成按入参 schema 生成的示例调用 `名(v1, v2)`
+function 填示例参数(骨架, 输入s) {
+  if (!输入s || !输入s.length) return 骨架;
+  const 参数串 = 输入s.map(示例参数).join(', ');
+  return 骨架.replace(/\(\s*\?\s*\)/, `(${参数串})`);
+}
 
 function 渲染候选(候选) {
   const div = document.getElementById('候选');
@@ -172,10 +199,18 @@ synthesize(方案)
 `;
       try {
         const r = await 跑Python('极快', 组码代码);
-        document.getElementById('代码').value = (r.stdout || '').trim();
-        document.getElementById('状态').textContent = `已组出 ${c.名称} 的代码`;
+        const 骨架 = (r.stdout || '').trim();
+        // synthesize 只写一个 `(?)`，不体现真实入参个数——增值税这类多参块
+        // 照原样只填一个值会让其余参数留 None，块内部算术直接崩。
+        // 这里按 索引.json 的 输入 schema 一次填齐示例值，代码开箱可跑。
+        const 输入s = c.输入 || [];
+        document.getElementById('代码').value = 填示例参数(骨架, 输入s);
+        const 参数说明 = 输入s.length
+          ? `入参 ${输入s.map((x) => x.名).join('、')}（已填示例值，可改）`
+          : '无入参';
+        设状态(`已组出 ${c.名称} 的代码 · ${参数说明}`);
       } catch (e) {
-        document.getElementById('状态').textContent = `[组码失败] ${e.message}`;
+        设状态(`[组码失败] ${e.message}`);
       }
     });
   });
