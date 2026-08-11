@@ -34,7 +34,8 @@ def 取版本() -> dict:
         try:
             r = subprocess.run(
                 ["git", "ls-remote", url, "HEAD"],
-                capture_output=True, text=True, timeout=20
+                capture_output=True, text=True, timeout=20,
+                encoding="utf-8", errors="replace"
             )
             if r.returncode == 0 and r.stdout.strip():
                 return r.stdout.strip().split()[0][:12]
@@ -81,12 +82,14 @@ def 浅克隆(名: str, urls: dict) -> Path:
     if 目标.exists():
         r = subprocess.run(
             ["git", "-C", str(目标), "fetch", "--depth", "1", "origin", "HEAD"],
-            capture_output=True, text=True, timeout=120
+            capture_output=True, text=True, timeout=120,
+            encoding="utf-8", errors="replace"
         )
         if r.returncode == 0:
             subprocess.run(
                 ["git", "-C", str(目标), "reset", "--hard", "FETCH_HEAD"],
-                capture_output=True, text=True, timeout=60
+                capture_output=True, text=True, timeout=60,
+                encoding="utf-8", errors="replace"
             )
         else:
             print(f"    ! 更新 {名} 失败：{r.stderr.strip()[:100]}")
@@ -100,7 +103,8 @@ def 浅克隆(名: str, urls: dict) -> Path:
         print(f"    尝试 {端}: {url}")
         r = subprocess.run(
             ["git", "clone", "--depth", "1", url, str(目标)],
-            capture_output=True, text=True, timeout=300
+            capture_output=True, text=True, timeout=300,
+            encoding="utf-8", errors="replace"
         )
         if r.returncode == 0:
             return 目标
@@ -371,6 +375,8 @@ def main():
     print("  预跑示例...")
     import 预跑器
     预跑器.预跑(数据目录, OUT / "静态" / "py")
+    print("  预跑学习基线...")
+    预跑器.预跑学习基线(数据目录, OUT / "静态" / "py")
     print("  自托管 Pyodide...")
     下载pyodide()
     写版本文件(版本)
