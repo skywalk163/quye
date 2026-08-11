@@ -4,7 +4,8 @@
 所以这里的命中率就是用户在 /台 上能感受到的命中率。
 
 用法：先 python 建站.py 产出语言包，再 python 工具/命中率实测.py
-退出码：命中率 >= 60% 返回 0，否则返回 1（spec §4.5 的兜底判定线）。
+退出码：命中率 >= 阈值 返回 0，否则返回 1。
+阈值：M3 实测 83%，M4 门禁提到 80%（贴着实测值，上游一退化就红牌）。
 """
 import os
 import sys
@@ -81,6 +82,8 @@ def 主() -> float:
     return 率
 
 
+THRESHOLD = 0.8  # M4: 从 60% 提到 80%（实测 83% 有余量）
+
 if __name__ == "__main__":
     率 = 主()
-    sys.exit(0 if 率 >= 0.6 else 1)
+    sys.exit(0 if 率 >= THRESHOLD else 1)

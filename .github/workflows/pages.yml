@@ -3,6 +3,9 @@ name: Build & Deploy Pages
 on:
   push:
     branches: [main]
+  schedule:
+    # 每日 UTC 22:00（北京 06:00）自动构建，捕获上游漂移
+    - cron: '0 22 * * *'
   workflow_dispatch:
 
 permissions:
@@ -24,8 +27,25 @@ jobs:
         with:
           python-version: '3.11'
 
+      # 硬门禁 1：构建必须过。任何异常 → 整个 job 红 → deploy 跳过 → 旧站保留。
       - name: Build site
         run: python 建站.py
+
+      # 硬门禁 2：产物自检（关键路由 + 站内死链 + 学习区页数）
+      - name: Verify artifacts
+        run: python 工具/产物自检.py
+
+      # 软门禁：命中率实测（依赖极快 retrieval 模块可用）。
+      # 门禁阈值 80%（M4 上调）。红牌不阻塞部署，只在 job summary 告警。
+      - name: Retrieval hit-rate (soft gate)
+        id: hitrate
+        continue-on-error: true
+        run: python 工具/命中率实测.py
+
+      - name: Warn on hit-rate regression
+        if: steps.hitrate.outcome == 'failure'
+        run: |
+          echo "::warning::命中率低于阈值 80%，请检查极快块库或 retrieval 抽取路径"
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3

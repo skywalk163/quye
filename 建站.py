@@ -61,6 +61,10 @@ def 取版本() -> dict:
 
 BUILD_CACHE = ROOT / ".build_cache"
 
+# M4 版本锁：浅克隆() 实际消费的 commit hash，构建结束写入 出/版本.json
+快照记录: dict = {}
+
+
 # 本地开发时可用的已有仓库路径（避免网络 clone）
 # CI 环境中这些路径不存在，会自动回退到 git clone
 LOCAL_REPOS = {
@@ -72,7 +76,18 @@ LOCAL_REPOS = {
 
 
 def 浅克隆(名: str, urls: dict) -> Path:
-    """获取语言仓库根目录。优先本地路径 → gitcode → github。"""
+    """获取语言仓库根目录。优先本地路径 → gitcode → github。
+
+    副作用：把实际使用的 commit hash 记入 快照记录（M4 版本锁）——
+    取版本() 拿的是远端 HEAD，而这里拿的是构建真正消费的那个提交，
+    本地路径 / 缓存未更新时两者会不同，产物必须标明后者。
+    """
+    根 = _取仓库根(名, urls)
+    快照记录[名] = _读本地hash(根)
+    return 根
+
+
+def _取仓库根(名: str, urls: dict) -> Path:
     local = LOCAL_REPOS.get(名)
     if local and local.exists():
         print(f"    用本地路径 {local}")
@@ -114,6 +129,27 @@ def 浅克隆(名: str, urls: dict) -> Path:
             import shutil as _s
             _s.rmtree(目标, ignore_errors=True)
     raise RuntimeError(f"克隆 {名} 双端均失败：{'; '.join(错误汇总)}")
+
+
+def _读本地hash(根: Path) -> dict:
+    """读仓库工作副本的 HEAD hash + 提交时间。非 git 目录返回未知。"""
+    def 跑(*参数) -> str:
+        r = subprocess.run(
+            ["git", "-C", str(根), *参数],
+            capture_output=True, text=True, timeout=20,
+            encoding="utf-8", errors="replace"
+        )
+        return r.stdout.strip() if r.returncode == 0 else ""
+
+    h = 跑("rev-parse", "HEAD")
+    if not h:
+        return {"hash": "未知", "提交时间": "", "路径": str(根)}
+    return {
+        "hash": h[:12],
+        "提交时间": 跑("log", "-1", "--format=%cI"),
+        "路径": str(根),
+    }
+
 
 
 def 抽取语言包(版本: dict) -> None:
@@ -471,6 +507,9 @@ def 复制静态():
 
 
 def 写版本文件(版本: dict):
+    # M4 版本锁：合并「远端 HEAD hash」与「构建期实际消费的 commit hash」
+    版本 = dict(版本)
+    版本["构建快照"] = 快照记录
     (OUT / "版本.json").write_text(
         json.dumps(版本, ensure_ascii=False, indent=2), encoding="utf-8"
     )

@@ -1,0 +1,113 @@
+name: Upstream Drift Check
+
+on:
+  schedule:
+    # 每日 UTC 14:00（北京 22:00）检测上游四门语言仓库是否有新提交
+    - cron: '0 14 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Detect upstream changes
+        id: drift
+        run: |
+          set -e
+          # 如果 出/版本.json 不存在（首次），跳过比较直接跑构建
+          python -c "
+          import json, subprocess, sys
+          from pathlib import Path
+
+          REPOS = {
+              '极快': {'gitcode': 'https://gitcode.com/skywalk163/jikuai', 'github': 'https://github.com/skywalk163/jikuai'},
+              '段言': {'gitcode': 'https://gitcode.com/skywalk163/duan', 'github': 'https://github.com/skywalk163/duan'},
+              '光明': {'gitcode': 'https://gitcode.com/skywalk163/light', 'github': 'https://github.com/skywalk163/light'},
+              '知行': {'gitcode': 'https://gitcode.com/skywalk163/zhixing', 'github': 'https://github.com/skywalk163/zhixing'},
+          }
+
+          def get_remote_head(url):
+              try:
+                  r = subprocess.run(['git', 'ls-remote', url, 'HEAD'],
+                      capture_output=True, text=True, timeout=20)
+                  if r.returncode == 0 and r.stdout.strip():
+                      return r.stdout.strip().split()[0][:12]
+              except Exception:
+                  pass
+              return None
+
+          changed = []
+          for name, urls in REPOS.items():
+              # 取 github 端 HEAD（CI 在 GitHub 上跑，优先 github）
+              head = get_remote_head(urls['github']) or get_remote_head(urls['gitcode'])
+              if head:
+                  changed.append(f'{name}={head}')
+
+          # 只要能取到任一仓库的 HEAD 就视为需要验证构建
+          if changed:
+              print('检测到上游：' + ', '.join(changed))
+              print('drift=true')
+          else:
+              print('所有仓库 HEAD 获取失败，跳过')
+              print('drift=false')
+              sys.exit(0)
+          " 2>&1 | tee drift_output.txt
+          if grep -q "drift=true" drift_output.txt; then
+            echo "drifted=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "drifted=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Attempt build
+        id: build
+        if: steps.drift.outputs.drifted == 'true'
+        continue-on-error: true
+        run: python 建站.py
+
+      - name: Run artifact check
+        id: selfcheck
+        if: steps.build.outcome == 'success'
+        continue-on-error: true
+        run: python 工具/产物自检.py
+
+      - name: Open issue on failure
+        if: steps.build.outcome == 'failure' || steps.selfcheck.outcome == 'failure'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const failed = [];
+            if ('${{ steps.build.outcome }}' === 'failure') failed.push('建站.py 构建失败');
+            if ('${{ steps.selfcheck.outcome }}' === 'failure') failed.push('产物自检失败');
+            const title = `[上游漂移] ${failed.join(' + ')} (${new Date().toISOString().slice(0,10)})`;
+            const body = `## 上游漂移检测报告\n\n` +
+              `- 构建结果: ${{ steps.build.outcome }}\n` +
+              `- 产物自检: ${{ steps.selfcheck.outcome }}\n\n` +
+              `请检查四门语言仓库最近推送是否破坏了 quye.com 的兼容性。\n\n` +
+              `> 自动创建于 ${new Date().toISOString()}`;
+            // 避免重复开 issue
+            const issues = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              labels: '上游漂移',
+              per_page: 5,
+            });
+            if (issues.data.length === 0) {
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title,
+                body,
+                labels: ['上游漂移'],
+              });
+            }
