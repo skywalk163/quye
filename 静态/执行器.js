@@ -74,16 +74,9 @@ if '/${语言}' not in sys.path:
   // 2) retrieval 索引 —— ai/retrieval.py 用 `__file__` 往上 3 级（假设自己在
   //    <repo>/src/jikuai/ai/），本布局只有 2 层，上 3 级会走出包根。手动喂索引。
   if (语言 === "极快") {
-    py.runPython(`
-import os, json
-os.environ['JIKUAI_PATH'] = '/极快/stdlib'
-from jikuai.ai import retrieval as _R
-_idx = '/极快/stdlib/blocks/索引.json'
-if os.path.isfile(_idx) and _R._cached_retriever is None:
-    with open(_idx, 'r', encoding='utf-8') as _f:
-        _blocks = json.load(_f).get('块', [])
-    _R._cached_retriever = _R.Retriever(_blocks, vector_index=None)
-`);
+    // retrieval 索引定位已在抽取期加固（抽取器/极快.py 把上3级改上2级）；
+    // 这里只需声明 JIKUAI_PATH，module_loader 据此定位到 /极快/stdlib。
+    py.runPython(`import os\nos.environ['JIKUAI_PATH'] = '/极快/stdlib'`);
   }
   _语言就绪.add(语言);
 }

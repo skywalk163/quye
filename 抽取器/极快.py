@@ -68,6 +68,37 @@ def 抽取(仓库根: Path, 目标: Path) -> None:
         raise FileNotFoundError(f"极快源码目录不存在：{src}")
     shutil.copytree(src, 目标 / "jikuai", dirs_exist_ok=True)
 
+    # 加固 retrieval 索引定位（建议书 §4.1）：
+    # 上游 vector_index_path/_load_blocks 用 `__file__` 上 3 级找 stdlib（假设自己在
+    # <repo>/src/jikuai/ai/），本布局 <目标>/jikuai/ai/ 上 3 级会走出包根、静默返回 []。
+    # 抽取期把「上 3 级」改成「上 2 级」——布局正好指向 <目标>/stdlib。
+    # 同时给 _load_blocks 的静默 return [] 加 warning（proposal §4.1）。
+    retr = 目标 / "jikuai" / "ai" / "retrieval.py"
+    if retr.exists():
+        s = retr.read_text(encoding="utf-8")
+        旧路径 = "os.path.normpath(os.path.join(here, '..', '..', '..'))"
+        新路径 = "os.path.normpath(os.path.join(here, '..', '..'))"
+        if 旧路径 not in s:
+            raise RuntimeError(
+                "极快 retrieval.py 上3级路径代码与预期不符，"
+                "请对照抽取器/极快.py 更新替换串"
+            )
+        s = s.replace(旧路径, 新路径)
+        旧静默 = "    if not os.path.isfile(idx_path):\n        return []"
+        新静默 = (
+            "    if not os.path.isfile(idx_path):\n"
+            "        import warnings as _w\n"
+            "        _w.warn(f'retrieval: 未定位到索引 {idx_path}，检索将返回空')\n"
+            "        return []"
+        )
+        if 旧静默 not in s:
+            raise RuntimeError(
+                "极快 retrieval._load_blocks 静默 return [] 段落与预期不符，"
+                "请对照抽取器/极快.py 更新替换串"
+            )
+        s = s.replace(旧静默, 新静默)
+        retr.write_text(s, encoding="utf-8")
+
     # 用保留签名的替身换掉走 git subprocess 的 sources.py
     坑 = 目标 / "jikuai" / "pkg" / "sources.py"
     if 坑.exists():
