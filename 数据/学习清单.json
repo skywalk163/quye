@@ -21,5 +21,23 @@
     {"序号": "07", "关卡": "07_字典",      "标题": "字典"},
     {"序号": "08", "关卡": "08_函数",      "标题": "函数"},
     {"序号": "09", "关卡": "09_异常",      "标题": "异常处理"}
+  ],
+  "极快": [
+    {"序号": "01", "关卡": "hello",        "标题": "你好世界",   "源": "examples/hello.jk"},
+    {"序号": "02", "关卡": "arithmetic",   "标题": "算术运算",   "源": "examples/arithmetic.jk"},
+    {"序号": "03", "关卡": "control_flow", "标题": "控制流",     "源": "examples/control_flow.jk"},
+    {"序号": "04", "关卡": "functions",    "标题": "函数",       "源": "examples/functions.jk"},
+    {"序号": "05", "关卡": "oop",          "标题": "对象",       "源": "examples/oop.jk"},
+    {"序号": "06", "关卡": "exception",    "标题": "异常",       "源": "examples/exception.jk"},
+    {"序号": "07", "关卡": "pipeline",     "标题": "管道范式",   "源": "examples/pipeline.jk"},
+    {"序号": "08", "关卡": "pipeline_agg", "标题": "管道进阶：过滤映射聚合", "源": "examples/pipelines/01_多级过滤映射聚合.jk"}
+  ],
+  "知行": [
+    {"序号": "01", "关卡": "01_basics",   "标题": "基础",   "源": "examples/01_basics.yan"},
+    {"序号": "02", "关卡": "02_pipeline", "标题": "管道",   "源": "examples/02_pipeline.yan"},
+    {"序号": "03", "关卡": "03_function", "标题": "函数",   "源": "examples/03_function.yan"},
+    {"序号": "04", "关卡": "04_loop",     "标题": "循环",   "源": "examples/04_loop.yan"},
+    {"序号": "05", "关卡": "05_list",     "标题": "列表",   "源": "examples/05_list.yan"},
+    {"序号": "06", "关卡": "11_dict",     "标题": "字典",   "源": "examples/11_dict.yan"}
   ]
 }

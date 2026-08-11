@@ -142,14 +142,15 @@ def 预跑学习基线(数据目录: Path, py根: Path) -> None:
 
     部分关卡（如段言 files 的真实文件 IO）在子进程可跑但浏览器 Pyodide 未必支持，
     这类关卡标 在线可判=False，页面只读展示、不提供在线判对。
-    可判关卡低于阈值则构建失败（spec §4.3 要 19 关全判对）。
+    可判关卡低于阈值则构建失败（M3 定的 19 关是不可退让的底线，M5 扩关只能加不能减）。
     """
     可判阈值 = 19
     清单 = json.loads((ROOT / "数据" / "学习清单.json").read_text(encoding="utf-8"))
     素材根 = 数据目录 / "学习素材"
-    基线 = {"段言": [], "光明": []}
+    语言表 = list(清单.keys())
+    基线 = {语言: [] for 语言 in 语言表}
     失败 = []
-    for 语言 in ("段言", "光明"):
+    for 语言 in 语言表:
         for 条 in 清单[语言]:
             关卡 = 条["关卡"]
             源码 = (素材根 / 语言 / 关卡 / "参考答案.txt").read_text(encoding="utf-8")
@@ -159,6 +160,7 @@ def 预跑学习基线(数据目录: Path, py根: Path) -> None:
                 基线[语言].append({**条, "预期stdout": "", "在线可判": False})
                 continue
             基线[语言].append({**条, "预期stdout": r["stdout"], "在线可判": True})
+    总关数 = sum(len(清单[语言]) for 语言 in 语言表)
     可判数 = sum(1 for 语言 in 基线 for x in 基线[语言] if x["在线可判"])
     if 可判数 < 可判阈值:
         for 条 in 失败:
@@ -169,7 +171,7 @@ def 预跑学习基线(数据目录: Path, py根: Path) -> None:
     (数据目录 / "学习基线.json").write_text(
         json.dumps(基线, ensure_ascii=False, indent=2), encoding="utf-8"
     )
-    print(f"  学习基线：可在线判 {可判数} / 19 关")
+    print(f"  学习基线：可在线判 {可判数} / {总关数} 关")
 
 
 if __name__ == "__main__":

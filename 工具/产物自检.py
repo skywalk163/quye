@@ -3,6 +3,7 @@
 用法：先 python 建站.py，再 python 工具/产物自检.py
 退出码：全部通过 0，有问题 1。
 """
+import json
 import re
 import sys
 from pathlib import Path
@@ -79,10 +80,17 @@ def 主() -> bool:
     if 死链:
         问题.append(f"站内死链 {len(死链)} 条：\n    " + "\n    ".join(死链[:20]))
 
-    # 学习区应有 19 关 + 1 索引
+    # 学习区页数应等于「关卡总数 + 1 个索引」（关卡数由 出/数据/学习清单.json 决定）
     学页数 = len(list((OUT / "学").rglob("index.html"))) if (OUT / "学").exists() else 0
-    if 学页数 != 20:
-        问题.append(f"学习区页面数 {学页数}，期望 20（19 关 + 1 索引）")
+    清单路径 = OUT / "数据" / "学习清单.json"
+    if 清单路径.exists():
+        清单 = json.loads(清单路径.read_text(encoding="utf-8"))
+        期望学页数 = sum(len(v) for v in 清单.values()) + 1
+    else:
+        期望学页数 = 0
+        问题.append("缺 数据/学习清单.json，无法校验学习区页数")
+    if 期望学页数 and 学页数 != 期望学页数:
+        问题.append(f"学习区页面数 {学页数}，期望 {期望学页数}（关卡 {期望学页数 - 1} + 1 索引）")
 
     # SEO 门禁（M5）：每页必须有非空 description + canonical，且被 sitemap 收录
     无描述, 无canonical = [], []

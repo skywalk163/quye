@@ -272,7 +272,7 @@ def 抽取并构建文档(版本: dict):
 
 
 def 抽取学习素材() -> None:
-    """抽段言 10 套练习 + 光明 9 课到 出/数据/学习素材/。
+    """抽段言 10 套练习 + 光明 9 课 + 极快/知行 若干示例到 出/数据/学习素材/。
 
     浅克隆() 幂等（本地路径直接返回；缓存已存在则 fetch 更新），
     这里二次调用不会重复 clone。
@@ -280,8 +280,13 @@ def 抽取学习素材() -> None:
     from 抽取器 import 学习 as 学习抽取
     段言根 = 浅克隆("段言", REPOS["段言"])
     光明根 = 浅克隆("光明", REPOS["光明"])
+    极快根 = 浅克隆("极快", REPOS["极快"])
+    知行根 = 浅克隆("知行", REPOS["知行"])
     清单 = json.loads((ROOT / "数据" / "学习清单.json").read_text(encoding="utf-8"))
-    学习抽取.抽取(段言根, 光明根, OUT / "数据" / "学习素材", 清单)
+    学习抽取.抽取(
+        段言根, 光明根, OUT / "数据" / "学习素材", 清单,
+        极快根=极快根, 知行根=知行根,
+    )
 
 
 PYODIDE_VERSION = "0.26.4"
@@ -541,17 +546,18 @@ def 构建对照(版本: dict):
 
 
 def 构建学习(版本: dict):
-    """学习区：索引页 + 19 个关卡页。依赖 出/数据/学习基线.json（预跑产出）。"""
+    """学习区：索引页 + 各语言关卡页。依赖 出/数据/学习基线.json（预跑产出）。"""
     清单 = json.loads((ROOT / "数据" / "学习清单.json").read_text(encoding="utf-8"))
     基线 = json.loads((OUT / "数据" / "学习基线.json").read_text(encoding="utf-8"))
     基线map = {(语言, x["关卡"]): x for 语言 in 基线 for x in 基线[语言]}
     素材根 = OUT / "数据" / "学习素材"
     学根 = OUT / "学"
     学根.mkdir(parents=True, exist_ok=True)
+    语言表 = list(清单.keys())
 
     # 索引页
     项 = []
-    for 语言 in ("段言", "光明"):
+    for 语言 in 语言表:
         项.append(f"<h2>{语言}</h2><ul class='关卡组'>")
         for 条 in 清单[语言]:
             关卡 = 条["关卡"]
@@ -563,12 +569,13 @@ def 构建学习(版本: dict):
     索引内容 = (模板目录 / "学索引.html").read_text(encoding="utf-8").replace(
         "{{关卡列表}}", "\n".join(项)
     )
+    总关数 = sum(len(清单[语言]) for 语言 in 语言表)
     md = (源目录 / "学.md").read_text(encoding="utf-8")
     页 = 渲染页面(
         "学习区 — quye",
         简易md转html(md) + 索引内容 + '\n<script src="/静态/学.js"></script>',
         版本,
-        描述="从零开始学段言和光明——19 个浏览器内判对关卡，在线写代码、即时验证。",
+        描述=f"从零开始学四门中文编程语言——{总关数} 个浏览器内判对关卡，在线写代码、即时验证。",
         路径="/学/",
     )
     (学根 / "index.html").write_text(页, encoding="utf-8")
@@ -580,7 +587,7 @@ def 构建学习(版本: dict):
 
     # 关卡页
     关卡模板 = (模板目录 / "学关卡.html").read_text(encoding="utf-8")
-    for 语言 in ("段言", "光明"):
+    for 语言 in 语言表:
         for 条 in 清单[语言]:
             关卡 = 条["关卡"]
             素材 = 素材根 / 语言 / 关卡
