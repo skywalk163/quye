@@ -18,6 +18,16 @@
 
   <div id="候选" class="候选 极快专属"></div>
 
+  <div class="管道段 极快专属" id="管道段" hidden>
+    <h4>管道步骤 <small>（按顺序串联，跑时逐步显示中间结果）</small></h4>
+    <ol id="管道列表" class="管道列表"></ol>
+    <div class="按钮组">
+      <button type="button" id="跑管道">逐步跑管道</button>
+      <button type="button" id="清管道">清空步骤</button>
+    </div>
+    <pre id="管道结果" class="结果"></pre>
+  </div>
+
   <div class="代码段">
     <textarea id="代码" placeholder="或者直接写代码" rows="8"></textarea>
     <div class="按钮组">
@@ -27,4 +37,11 @@
   </div>
 
   <pre id="结果" class="结果"></pre>
+
+  <div class="历史段">
+    <h4>最近记录 <small>（本机保存最近 20 条）</small></h4>
+    <ul id="历史列表" class="历史列表"></ul>
+    <button type="button" id="清历史" class="小钮">清空历史</button>
+  </div>
 </section>
+

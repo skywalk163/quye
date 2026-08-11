@@ -238,3 +238,59 @@ main p code { background: #f0f0f0; padding: 0.1em 0.4em; border-radius: 3px; }
 .进度工具 button:focus-visible { outline: 2px solid var(--色-强调); outline-offset: 1px; }
 .进度提示 { color: var(--色-浅字); }
 
+/* ===== M6：块浏览器 / 管道 / 历史 ===== */
+
+/* 块浏览器 */
+.块搜索 input[type="search"] { width: 100%; padding: 10px 12px; font: inherit; border: 1px solid #ddd; border-radius: 6px; background: var(--色-卡背景); }
+.块搜索 input[type="search"]:focus { outline: 2px solid var(--色-强调); outline-offset: 1px; }
+.领域筛选 { display: flex; flex-wrap: wrap; gap: 6px; margin: var(--间-基) 0; }
+.领域标签 { padding: 5px 12px; font: inherit; font-size: 0.85rem; border: 1px solid #ddd; border-radius: 999px; background: var(--色-卡背景); color: var(--色-文字); cursor: pointer; }
+.领域标签:hover { border-color: var(--色-强调); }
+.领域标签:focus-visible { outline: 2px solid var(--色-强调); outline-offset: 1px; }
+.领域标签.激活 { background: var(--色-强调); border-color: var(--色-强调); color: #fff; }
+.块网格 { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px; }
+.块卡 { display: flex; flex-direction: column; gap: 4px; text-align: left; padding: 12px 14px; font: inherit; background: var(--色-卡背景); border: 1px solid #eee; border-radius: 6px; cursor: pointer; color: var(--色-文字); }
+.块卡:hover { border-color: var(--色-强调); }
+.块卡:focus-visible { outline: 2px solid var(--色-强调); outline-offset: 1px; }
+.块卡 .块名 { font-weight: 700; }
+.块卡 .块签名 { font-family: "JetBrains Mono", monospace; font-size: 0.78rem; color: var(--色-强调); word-break: break-all; }
+.块卡 .块描述 { font-size: 0.85rem; color: var(--色-文字); }
+.块卡 .块标记 { font-size: 0.75rem; color: var(--色-浅字); }
+
+/* 块详情面板 */
+.块详情 { position: relative; padding: var(--间-基) calc(var(--间-基) * 1.2); margin-bottom: var(--间-基); background: var(--色-卡背景); border: 1px solid var(--色-强调); border-radius: 8px; }
+.详关闭 { position: absolute; top: 8px; right: 10px; width: 28px; height: 28px; font-size: 1.2rem; line-height: 1; border: 1px solid #ddd; border-radius: 6px; background: var(--色-卡背景); cursor: pointer; }
+.详签名 code { font-family: "JetBrains Mono", monospace; font-size: 0.85rem; background: #f4f4f6; padding: 3px 6px; border-radius: 4px; }
+.详标签 { font-size: 0.8rem; color: var(--色-浅字); }
+.详代码 { background: #1e1e2e; color: #e0e0e0; padding: 12px; border-radius: 6px; white-space: pre-wrap; font-family: "JetBrains Mono", monospace; font-size: 0.85rem; }
+.详按钮 { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 8px; }
+.详跑 { padding: 7px 16px; font: inherit; border: none; border-radius: 6px; background: var(--色-强调); color: #fff; cursor: pointer; }
+.详跑[disabled] { background: #ccc; cursor: not-allowed; }
+.详按钮次 { font-size: 0.9rem; color: var(--色-强调); }
+.详状态 { font-size: 0.85rem; color: var(--色-浅字); }
+.详输出 { background: #1e1e2e; color: #a6e3a1; padding: 12px; border-radius: 6px; white-space: pre-wrap; font-family: "JetBrains Mono", monospace; font-size: 0.85rem; }
+
+/* 工作台管道组装 */
+.管道段 { margin: var(--间-基) 0; padding: var(--间-基); background: var(--色-卡背景); border: 1px solid #eee; border-radius: 8px; }
+.管道段 h4 small { color: var(--色-浅字); font-weight: 400; }
+.管道列表 { padding-left: 1.4rem; margin: 8px 0; }
+.管道步 { margin-bottom: 10px; }
+.管道步头 { display: flex; align-items: center; gap: 8px; }
+.管道步头 small { color: var(--色-浅字); }
+.管道步码 { width: 100%; margin-top: 4px; padding: 8px; font-family: "JetBrains Mono", monospace; font-size: 0.85rem; border: 1px solid #ddd; border-radius: 6px; }
+.小钮 { padding: 3px 10px; font: inherit; font-size: 0.8rem; border: 1px solid #ddd; border-radius: 6px; background: var(--色-背景); color: var(--色-浅字); cursor: pointer; }
+.小钮:hover { border-color: var(--色-强调); color: var(--色-强调); }
+.候选加管道 { margin-top: 6px; padding: 3px 10px; font: inherit; font-size: 0.78rem; border: 1px solid #ddd; border-radius: 6px; background: var(--色-背景); color: var(--色-文字); cursor: pointer; }
+.候选加管道:hover { border-color: var(--色-强调); color: var(--色-强调); }
+
+/* 工作台历史 */
+.历史段 { margin-top: calc(var(--间-基) * 1.5); padding-top: var(--间-基); border-top: 1px solid #eee; }
+.历史段 h4 small { color: var(--色-浅字); font-weight: 400; }
+.历史列表 { list-style: none; padding: 0; margin: 8px 0; }
+.历史条 { display: flex; align-items: center; gap: 8px; padding: 4px 0; }
+.历史回填 { flex: 1; text-align: left; padding: 6px 10px; font: inherit; font-size: 0.85rem; border: 1px solid #eee; border-radius: 6px; background: var(--色-卡背景); color: var(--色-文字); cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.历史回填:hover { border-color: var(--色-强调); }
+.历史时间 { color: var(--色-浅字); font-size: 0.75rem; white-space: nowrap; }
+.历史空 { color: var(--色-浅字); font-size: 0.85rem; }
+
+

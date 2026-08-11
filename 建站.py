@@ -616,6 +616,82 @@ def 构建学习(版本: dict):
             (目录 / "index.html").write_text(页, encoding="utf-8")
 
 
+def 构建块浏览器(版本: dict):
+    """M6 块浏览器 /块：从 出/静态/py/极快/stdlib/blocks/索引.json 构建分类列表。
+
+    索引.json 不含「示例」字段（上游刻意窄化），所以这里逐块读 块.json 补上，
+    合并结果写到 出/数据/块索引.json 供前端一次 fetch。
+    """
+    blocks根 = OUT / "静态" / "py" / "极快" / "stdlib" / "blocks"
+    索引路径 = blocks根 / "索引.json"
+    if not 索引路径.exists():
+        raise FileNotFoundError(f"极快块索引缺失：{索引路径}")
+    块列表 = json.loads(索引路径.read_text(encoding="utf-8")).get("块", [])
+
+    # 补示例字段（索引.json 只有 名称/领域/描述/输入/输出/导出/稳定性）
+    for b in 块列表:
+        领域 = (b.get("领域") or ["未分类"])[0]
+        块json = blocks根 / 领域 / b["名称"] / "块.json"
+        b["示例"] = (
+            json.loads(块json.read_text(encoding="utf-8")).get("示例", "")
+            if 块json.exists() else ""
+        )
+
+    (OUT / "数据" / "块索引.json").write_text(
+        json.dumps({"块": 块列表}, ensure_ascii=False), encoding="utf-8"
+    )
+
+    分组 = {}
+    for b in 块列表:
+        分组.setdefault((b.get("领域") or ["未分类"])[0], []).append(b)
+
+    领域标签 = "\n".join(
+        f"<button type='button' class='领域标签' data-领域='{转义(域)}'>{转义(域)} {len(组)}</button>"
+        for 域, 组 in sorted(分组.items())
+    )
+    卡片 = []
+    for b in 块列表:
+        领域 = (b.get("领域") or ["未分类"])[0]
+        入参 = "、".join(i.get("名", "?") for i in (b.get("输入") or [])) or "无入参"
+        导出名 = (b.get("导出") or [b["名称"]])[0]
+        出类型 = b.get("输出", {}).get("类型", "?")
+        if isinstance(出类型, dict):
+            出类型 = 出类型.get("类型", "?")
+        卡片.append(
+            f"<button type='button' class='块卡' data-领域='{转义(领域)}'"
+            f" data-名称='{转义(b['名称'])}'>"
+            f"<span class='块名'>{转义(b['名称'])}</span>"
+            f"<span class='块签名'>{转义(导出名)}({转义(入参)}) → {转义(出类型)}</span>"
+            f"<span class='块描述'>{转义(b.get('描述', ''))}</span>"
+            f"<span class='块标记'>{转义(领域)} · {转义(b.get('稳定性', ''))}</span>"
+            f"</button>"
+        )
+    内容 = (
+        "<section class='块浏览器'>"
+        "<h1>块生态浏览器</h1>"
+        f"<p>极快标准库共 {len(块列表)} 个块，分 {len(分组)} 个领域。"
+        "点任一块看签名与描述，可直接在浏览器里跑它的官方示例。</p>"
+        "<div class='块搜索'><input type='search' id='块搜索框' "
+        "placeholder='搜索块名或描述…' autocomplete='off' aria-label='搜索块'></div>"
+        f"<div class='领域筛选'>"
+        f"<button type='button' class='领域标签 激活' data-领域='全部'>全部 {len(块列表)}</button>"
+        f"{领域标签}</div>"
+        "<div id='块详情' class='块详情' hidden></div>"
+        f"<div class='块网格' id='块网格'>{''.join(卡片)}</div>"
+        "</section>"
+        '\n<script src="/静态/块浏览.js"></script>'
+    )
+    页 = 渲染页面(
+        "块浏览器 — quye", 内容, 版本,
+        描述=f"浏览极快 {len(块列表)} 个标准库块：按领域分类、查看签名与描述、在线运行官方示例。",
+        路径="/块/",
+    )
+    块根 = OUT / "块"
+    块根.mkdir(parents=True, exist_ok=True)
+    (块根 / "index.html").write_text(页, encoding="utf-8")
+    print(f"    块浏览器：{len(块列表)} 块 / {len(分组)} 个领域")
+
+
 def 复制静态():
     目标 = OUT / "静态"
     if 目标.exists():
@@ -673,6 +749,8 @@ def main():
     预跑器.预跑学习基线(数据目录, OUT / "静态" / "py")
     print("  构建学习区...")
     构建学习(版本)
+    print("  构建块浏览器...")
+    构建块浏览器(版本)
     print("  抽取并构建文档...")
     抽取并构建文档(版本)
     print("  自托管 Pyodide...")

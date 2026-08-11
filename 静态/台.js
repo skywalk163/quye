@@ -107,6 +107,7 @@ document.getElementById('跑').addEventListener('click', async () => {
   try {
     const r = await 跑代码(语言, 源码);
     结果.textContent = r.stdout + (r.返回值 ? `\n\n返回值：${r.返回值}` : '');
+    存历史({ 语言, 源码, 需求: document.getElementById('需求').value.trim(), 输出: r.stdout });
   } catch (e) {
     结果.textContent = `[错误] ${e.message}`;
   }
@@ -187,10 +188,12 @@ function 渲染候选(候选) {
     <div class="候选卡" data-idx="${i}">
       <div class="候选名">${转义(c.名称)}</div>
       <div class="候选meta">${转义(c.领域)} · ${Number(c.分数).toFixed(2)}</div>
+      <button type="button" class="候选加管道" data-idx="${i}">加入管道</button>
     </div>
   `).join('');
   div.querySelectorAll('.候选卡').forEach((el) => {
-    el.addEventListener('click', async () => {
+    el.addEventListener('click', async (ev) => {
+      if (ev.target.classList.contains('候选加管道')) return; // 加管道不触发组码
       const c = 候选[Number(el.dataset.idx)];
       const 组码代码 = `
 from glue import synthesize
@@ -214,4 +217,173 @@ synthesize(方案)
       }
     });
   });
+  div.querySelectorAll('.候选加管道').forEach((btn) => {
+    btn.addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      加入管道(候选[Number(btn.dataset.idx)]);
+    });
+  });
 }
+
+// ---------- M6：多步管道组装 ----------
+// 每一步是一个独立的极快代码片段（默认由 synthesize 组出、可手改），
+// 「逐步跑」把每步单独送进 Worker，依次展示中间 stdout——
+// 这是极快管道范式在 Web 上的可视化，不是真正的值传递管道。
+let _管道 = [];
+
+function 加入管道(c) {
+  _管道.push({ 名称: c.名称, 领域: c.领域, 导出名: c.导出名 || c.名称, 输入: c.输入 || [], 源码: '' });
+  渲染管道();
+  设状态(`已加入管道第 ${_管道.length} 步：${c.名称}`);
+}
+
+function 渲染管道() {
+  const 段 = document.getElementById('管道段');
+  const 列 = document.getElementById('管道列表');
+  if (!段 || !列) return;
+  段.hidden = _管道.length === 0;
+  列.textContent = '';
+  _管道.forEach((步, i) => {
+    const li = document.createElement('li');
+    li.className = '管道步';
+
+    const 头 = document.createElement('div');
+    头.className = '管道步头';
+    const 名 = document.createElement('strong');
+    名.textContent = `${步.名称}`;
+    const 域 = document.createElement('small');
+    域.textContent = ` ${步.领域}`;
+    const 删 = document.createElement('button');
+    删.type = 'button';
+    删.className = '小钮';
+    删.textContent = '移除';
+    删.addEventListener('click', () => { _管道.splice(i, 1); 渲染管道(); });
+    头.append(名, 域, 删);
+
+    const 框 = document.createElement('textarea');
+    框.className = '管道步码';
+    框.rows = 3;
+    框.placeholder = '这一步的极快代码（留空则点「逐步跑」时自动组码）';
+    框.value = 步.源码;
+    框.addEventListener('input', () => { 步.源码 = 框.value; });
+
+    li.append(头, 框);
+    列.appendChild(li);
+  });
+}
+
+async function 组一步(步) {
+  const 组码代码 = `
+from glue import synthesize
+方案 = {"步骤": [{"块": ${JSON.stringify(步.名称)}, "领域": ${JSON.stringify(步.领域)}, "导出名": ${JSON.stringify(步.导出名)}}]}
+synthesize(方案)
+`;
+  const r = await 跑Python('极快', 组码代码);
+  return 填示例参数((r.stdout || '').trim(), 步.输入);
+}
+
+const 跑管道钮 = document.getElementById('跑管道');
+if (跑管道钮) {
+  跑管道钮.addEventListener('click', async () => {
+    const 出 = document.getElementById('管道结果');
+    if (!_管道.length) { 出.textContent = '管道为空，先从候选块「加入管道」'; return; }
+    出.textContent = '';
+    for (let i = 0; i < _管道.length; i++) {
+      const 步 = _管道[i];
+      设状态(`跑管道第 ${i + 1}/${_管道.length} 步：${步.名称}`);
+      try {
+        if (!步.源码.trim()) {
+          步.源码 = await 组一步(步);
+          渲染管道();
+        }
+        const r = await 跑代码('极快', 步.源码);
+        出.textContent += `— 第 ${i + 1} 步 ${步.名称} —\n${r.stdout || '(无输出)'}\n\n`;
+      } catch (e) {
+        出.textContent += `— 第 ${i + 1} 步 ${步.名称} —\n[错误] ${e.message}\n\n`;
+        设状态(`管道在第 ${i + 1} 步中断`);
+        return;
+      }
+    }
+    设状态(`管道 ${_管道.length} 步全部跑完`);
+  });
+}
+
+const 清管道钮 = document.getElementById('清管道');
+if (清管道钮) {
+  清管道钮.addEventListener('click', () => {
+    _管道 = [];
+    渲染管道();
+    document.getElementById('管道结果').textContent = '';
+  });
+}
+
+// ---------- M6：工作台历史（localStorage 最近 20 条） ----------
+const 历史KEY = 'quye_工作台历史';
+const 历史上限 = 20;
+
+function 读历史() {
+  try {
+    const v = JSON.parse(localStorage.getItem(历史KEY) || '[]');
+    return Array.isArray(v) ? v : [];
+  } catch { return []; }
+}
+
+function 存历史(条) {
+  if (!条.源码 || !条.源码.trim()) return;
+  const 表 = 读历史();
+  // 同语言同源码去重：把旧的那条提到最前，避免反复跑同一段刷满列表
+  const 位 = 表.findIndex((x) => x.语言 === 条.语言 && x.源码 === 条.源码);
+  if (位 >= 0) 表.splice(位, 1);
+  表.unshift({ ...条, 时间: new Date().toISOString() });
+  localStorage.setItem(历史KEY, JSON.stringify(表.slice(0, 历史上限)));
+  渲染历史();
+}
+
+function 渲染历史() {
+  const 列 = document.getElementById('历史列表');
+  if (!列) return;
+  const 表 = 读历史();
+  列.textContent = '';
+  if (!表.length) {
+    const li = document.createElement('li');
+    li.className = '历史空';
+    li.textContent = '还没有记录，跑一段代码就会出现在这里';
+    列.appendChild(li);
+    return;
+  }
+  表.forEach((条, i) => {
+    const li = document.createElement('li');
+    li.className = '历史条';
+
+    const 钮 = document.createElement('button');
+    钮.type = 'button';
+    钮.className = '历史回填';
+    const 摘 = 条.源码.replace(/\s+/g, ' ').slice(0, 48);
+    钮.textContent = `${条.语言} · ${条.需求 ? 条.需求 + ' · ' : ''}${摘}`;
+    钮.title = 条.源码;
+    钮.addEventListener('click', () => {
+      document.getElementById('语言选择').value = 条.语言;
+      切换语言(条.语言);
+      document.getElementById('代码').value = 条.源码;
+      if (条.需求) document.getElementById('需求').value = 条.需求;
+      设状态(`已回填第 ${i + 1} 条记录`);
+    });
+
+    const 时 = document.createElement('small');
+    时.className = '历史时间';
+    时.textContent = 条.时间 ? 条.时间.slice(5, 16).replace('T', ' ') : '';
+
+    li.append(钮, 时);
+    列.appendChild(li);
+  });
+}
+
+const 清历史钮 = document.getElementById('清历史');
+if (清历史钮) {
+  清历史钮.addEventListener('click', () => {
+    localStorage.removeItem(历史KEY);
+    渲染历史();
+  });
+}
+
+渲染历史();
