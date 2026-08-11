@@ -71,19 +71,30 @@ def 抽取(仓库根: Path, 目标: Path) -> None:
     # 加固 retrieval 索引定位（建议书 §4.1）：
     # 上游 vector_index_path/_load_blocks 用 `__file__` 上 3 级找 stdlib（假设自己在
     # <repo>/src/jikuai/ai/），本布局 <目标>/jikuai/ai/ 上 3 级会走出包根、静默返回 []。
-    # 抽取期把「上 3 级」改成「上 2 级」——布局正好指向 <目标>/stdlib。
-    # 同时给 _load_blocks 的静默 return [] 加 warning（proposal §4.1）。
+    # 抽取期把「上 3 级」改成「上 2 级」——布局正好指向 <目标>/stdlib。两处（向量索引
+    # 与块索引）用同一串，replace 全替。
+    #
+    # 第二处补丁（给静默 return [] 加 warning）：上游 2026-08 起已自行改成
+    # `_log.warning(...)`，命中即视为「上游已落地」直接跳过，不再注入。
+    # 两处补丁都不硬失败——上游漂移由 工具/命中率实测.py 兜住（命中率骤降 →
+    # CI 软门禁告警 + 上游漂移 workflow 开 issue），构建本身不该因一个字符串失配而红。
     retr = 目标 / "jikuai" / "ai" / "retrieval.py"
     if retr.exists():
         s = retr.read_text(encoding="utf-8")
+        原文 = s
+
         旧路径 = "os.path.normpath(os.path.join(here, '..', '..', '..'))"
         新路径 = "os.path.normpath(os.path.join(here, '..', '..'))"
-        if 旧路径 not in s:
-            raise RuntimeError(
-                "极快 retrieval.py 上3级路径代码与预期不符，"
-                "请对照抽取器/极快.py 更新替换串"
+        if 旧路径 in s:
+            s = s.replace(旧路径, 新路径)
+        elif 新路径 in s:
+            print("    · 极快 retrieval 路径已是上 2 级（上游已适配），跳过路径补丁")
+        else:
+            print(
+                "    ! 极快 retrieval 索引路径写法与预期不符（上游可能重构），"
+                "跳过路径补丁——请看命中率实测结果确认检索是否仍可用"
             )
-        s = s.replace(旧路径, 新路径)
+
         旧静默 = "    if not os.path.isfile(idx_path):\n        return []"
         新静默 = (
             "    if not os.path.isfile(idx_path):\n"
@@ -91,13 +102,15 @@ def 抽取(仓库根: Path, 目标: Path) -> None:
             "        _w.warn(f'retrieval: 未定位到索引 {idx_path}，检索将返回空')\n"
             "        return []"
         )
-        if 旧静默 not in s:
-            raise RuntimeError(
-                "极快 retrieval._load_blocks 静默 return [] 段落与预期不符，"
-                "请对照抽取器/极快.py 更新替换串"
-            )
-        s = s.replace(旧静默, 新静默)
-        retr.write_text(s, encoding="utf-8")
+        if 旧静默 in s:
+            s = s.replace(旧静默, 新静默)
+        elif "_log.warning" in s and "idx_path" in s:
+            print("    · 极快 retrieval 索引缺失已由上游自行告警，跳过 warning 注入")
+        else:
+            print("    ! 极快 retrieval 索引缺失分支与预期不符，跳过 warning 注入")
+
+        if s != 原文:
+            retr.write_text(s, encoding="utf-8")
 
     # 用保留签名的替身换掉走 git subprocess 的 sources.py
     坑 = 目标 / "jikuai" / "pkg" / "sources.py"
