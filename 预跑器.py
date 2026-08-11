@@ -6,6 +6,7 @@ import json
 import os
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 
@@ -79,7 +80,10 @@ sys.stdout.write("@@MARK@@" + _buf.getvalue())
 
 
 def 跑一个(语言: str, 源码: str, 语言目录: Path) -> dict:
-    """在子进程里跑语言的解释器，避免污染当前进程。"""
+    """在子进程里跑语言的解释器，避免污染当前进程。
+
+    cwd 用临时目录：段言 files 练习之类会真写文件，不能让它污染仓库根。
+    """
     if 语言 not in 桥:
         return {"error": f"未知语言 {语言}"}
     code = (
@@ -88,12 +92,14 @@ def 跑一个(语言: str, 源码: str, 语言目录: Path) -> dict:
         .replace("@@SRC@@", repr(源码))
         .replace("@@MARK@@", 标记)
     )
-    r = subprocess.run(
-        [sys.executable, "-c", code],
-        capture_output=True, text=True, timeout=30,
-        encoding="utf-8", errors="replace",
-        env={**os.environ, "PYTHONIOENCODING": "utf-8", "PYTHONUTF8": "1"},
-    )
+    with tempfile.TemporaryDirectory(prefix="quye_预跑_") as 沙箱:
+        r = subprocess.run(
+            [sys.executable, "-c", code],
+            capture_output=True, text=True, timeout=30,
+            encoding="utf-8", errors="replace",
+            cwd=沙箱,
+            env={**os.environ, "PYTHONIOENCODING": "utf-8", "PYTHONUTF8": "1"},
+        )
     if r.returncode != 0:
         return {"error": (r.stderr or "")[:500]}
     idx = (r.stdout or "").find(标记)

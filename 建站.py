@@ -168,6 +168,37 @@ def 抽取语言包(版本: dict) -> None:
 
 
 
+def 抽取并构建文档(版本: dict):
+    """从四门语言仓库精选 md → 出/文档/。"""
+    from 抽取器 import 文档 as 文档抽取
+    仓库根映射 = {名: 浅克隆(名, REPOS[名]) for 名 in ("极快", "段言", "光明", "知行")}
+    清单 = json.loads((ROOT / "数据" / "文档清单.json").read_text(encoding="utf-8"))
+    文档数据 = OUT / "数据" / "文档"
+    成功 = 文档抽取.抽取(仓库根映射, 文档数据, 清单)
+
+    文档根 = OUT / "文档"
+    文档根.mkdir(parents=True, exist_ok=True)
+    # 索引：按分组列出
+    分组 = {}
+    for 条 in 成功:
+        分组.setdefault(条.get("分组", "其他"), []).append(条)
+    项 = []
+    for 组名, 组 in 分组.items():
+        项.append(f"<h2>{转义(组名)}</h2><ul>")
+        for 条 in 组:
+            项.append(f"<li><a href='/文档/{条['slug']}/'>{转义(条['标题'])}</a></li>")
+        项.append("</ul>")
+    索引html = "<section class='文档索引'><h1>文档</h1>\n" + "\n".join(项) + "\n</section>"
+    (文档根 / "index.html").write_text(渲染页面("文档 — quye", 索引html, 版本), encoding="utf-8")
+    # 各文档页
+    for 条 in 成功:
+        md = (文档数据 / f"{条['slug']}.md").read_text(encoding="utf-8")
+        页 = 渲染页面(f"{条['标题']} — quye", 简易md转html(md), 版本, 讨论语言=条["语言"])
+        目录 = 文档根 / 条["slug"]
+        目录.mkdir(parents=True, exist_ok=True)
+        (目录 / "index.html").write_text(页, encoding="utf-8")
+
+
 def 抽取学习素材() -> None:
     """抽段言 10 套练习 + 光明 9 课到 出/数据/学习素材/。
 
@@ -298,12 +329,37 @@ def 构建首页(版本: dict):
 def 构建语言页(版本: dict):
     语言目录 = OUT / "语言"
     语言目录.mkdir(parents=True, exist_ok=True)
-    for md_file in (源目录 / "语言").glob("*.md"):
+    名单 = []
+    for md_file in sorted((源目录 / "语言").glob("*.md")):
         名 = md_file.stem
         md = md_file.read_text(encoding="utf-8")
         内容html = 简易md转html(md)
-        html = 渲染页面(f"{名} — quye", 内容html, 版本)
+        html = 渲染页面(f"{名} — quye", 内容html, 版本, 讨论语言=名)
         (语言目录 / f"{名}.html").write_text(html, encoding="utf-8")
+        # 索引卡片的一句话简介：取 md 里第一段非标题正文
+        简介 = ""
+        for line in md.splitlines():
+            s = line.strip()
+            if s and not s.startswith("#") and not s.startswith("-"):
+                简介 = s
+                break
+        名单.append((名, 简介))
+
+    # 索引页：导航栏的 /语言/ 指向这里
+    卡片 = "\n".join(
+        f"<li><a href='/语言/{名}.html'><strong>{转义(名)}</strong>"
+        f"<div>{转义(简介[:60])}</div></a></li>"
+        for 名, 简介 in 名单
+    )
+    索引html = (
+        "<section class='语言索引'><h1>四门中文编程语言</h1>"
+        "<p>同一个需求四种写法，每门语言的哲学一目了然。</p>"
+        f"<ul class='语言组'>{卡片}</ul>"
+        "<p><a href='/对照/'>去对照页并排跑同一需求 →</a></p></section>"
+    )
+    (语言目录 / "index.html").write_text(
+        渲染页面("语言 — quye", 索引html, 版本), encoding="utf-8"
+    )
 
 
 def 构建路线图(版本: dict):
@@ -313,6 +369,14 @@ def 构建路线图(版本: dict):
     路线图目录 = OUT / "路线图"
     路线图目录.mkdir(parents=True, exist_ok=True)
     (路线图目录 / "index.html").write_text(html, encoding="utf-8")
+
+
+def 构建本地(版本: dict):
+    md = (源目录 / "本地.md").read_text(encoding="utf-8")
+    html = 渲染页面("本地开发 — quye", 简易md转html(md), 版本)
+    目录 = OUT / "本地"
+    目录.mkdir(parents=True, exist_ok=True)
+    (目录 / "index.html").write_text(html, encoding="utf-8")
 
 
 def 构建工作台(版本: dict):
@@ -423,6 +487,8 @@ def main():
     构建语言页(版本)
     print("  构建路线图...")
     构建路线图(版本)
+    print("  构建本地开发...")
+    构建本地(版本)
     print("  构建工作台...")
     构建工作台(版本)
     print("  构建对照...")
@@ -447,6 +513,8 @@ def main():
     预跑器.预跑学习基线(数据目录, OUT / "静态" / "py")
     print("  构建学习区...")
     构建学习(版本)
+    print("  抽取并构建文档...")
+    抽取并构建文档(版本)
     print("  自托管 Pyodide...")
     下载pyodide()
     写版本文件(版本)
