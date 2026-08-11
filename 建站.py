@@ -205,7 +205,7 @@ def 抽取语言包(版本: dict) -> None:
 
 
 def 抽取并构建文档(版本: dict):
-    """从四门语言仓库精选 md → 出/文档/。"""
+    """从四门语言仓库精选 md → 出/文档/，并生成前端搜索索引。"""
     from 抽取器 import 文档 as 文档抽取
     仓库根映射 = {名: 浅克隆(名, REPOS[名]) for 名 in ("极快", "段言", "光明", "知行")}
     清单 = json.loads((ROOT / "数据" / "文档清单.json").read_text(encoding="utf-8"))
@@ -214,7 +214,7 @@ def 抽取并构建文档(版本: dict):
 
     文档根 = OUT / "文档"
     文档根.mkdir(parents=True, exist_ok=True)
-    # 索引：按分组列出
+    # 索引：按分组列出 + 搜索框
     分组 = {}
     for 条 in 成功:
         分组.setdefault(条.get("分组", "其他"), []).append(条)
@@ -224,15 +224,51 @@ def 抽取并构建文档(版本: dict):
         for 条 in 组:
             项.append(f"<li><a href='/文档/{条['slug']}/'>{转义(条['标题'])}</a></li>")
         项.append("</ul>")
-    索引html = "<section class='文档索引'><h1>文档</h1>\n" + "\n".join(项) + "\n</section>"
-    (文档根 / "index.html").write_text(渲染页面("文档 — quye", 索引html, 版本), encoding="utf-8")
-    # 各文档页
+    搜索框 = (
+        "<div class='文档搜索'>"
+        "<input type='search' id='文档搜索框' placeholder='搜索文档标题/正文…' "
+        "autocomplete='off' aria-label='搜索文档'>"
+        "<ul id='文档搜索结果' hidden></ul>"
+        "</div>"
+    )
+    索引html = (
+        "<section class='文档索引'><h1>文档</h1>\n"
+        + 搜索框 + "\n<div id='文档分组'>\n" + "\n".join(项) + "\n</div></section>"
+        + '\n<script src="/静态/文档搜索.js" defer></script>'
+    )
+    (文档根 / "index.html").write_text(
+        渲染页面(
+            "文档 — quye", 索引html, 版本,
+            描述="极快、段言、光明、知行四门语言的安装、入门、语言特色与工具链文档合集，支持全文搜索。",
+            路径="/文档/",
+        ),
+        encoding="utf-8",
+    )
+    # 各文档页 + 搜索索引
+    搜索索引 = []
     for 条 in 成功:
         md = (文档数据 / f"{条['slug']}.md").read_text(encoding="utf-8")
-        页 = 渲染页面(f"{条['标题']} — quye", 简易md转html(md), 版本, 讨论语言=条["语言"])
+        页 = 渲染页面(
+            f"{条['标题']} — quye", 简易md转html(md), 版本, 讨论语言=条["语言"],
+            描述=摘要(md) or 条["标题"], 路径=f"/文档/{条['slug']}/",
+        )
         目录 = 文档根 / 条["slug"]
         目录.mkdir(parents=True, exist_ok=True)
         (目录 / "index.html").write_text(页, encoding="utf-8")
+        # 搜索索引：标题 + 分组 + 正文纯文本（去 md 标记，截断以控体积）
+        正文 = re.sub(r'[#*`>\[\]\-]', ' ', md)
+        正文 = re.sub(r'\s+', ' ', 正文).strip()
+        搜索索引.append({
+            "slug": 条["slug"],
+            "标题": 条["标题"],
+            "分组": 条.get("分组", "其他"),
+            "语言": 条["语言"],
+            "正文": 正文[:2000],
+        })
+    (OUT / "数据" / "文档搜索索引.json").write_text(
+        json.dumps(搜索索引, ensure_ascii=False), encoding="utf-8"
+    )
+    print(f"    文档搜索索引：{len(搜索索引)} 篇")
 
 
 def 抽取学习素材() -> None:
@@ -334,8 +370,20 @@ def 简易md转html(md: str) -> str:
     return "\n".join(html_parts)
 
 
-def 渲染页面(标题: str, 内容html: str, 版本: dict, 讨论语言: str = "极快") -> str:
-    """把内容嵌入基础模板。讨论语言决定页脚讨论区指向哪个语言仓库。"""
+SITE = "https://quye.com"
+默认描述 = "quye — 中文 AI 编程中心：四门中文编程语言（极快/段言/光明/知行）统一门户，浏览器里零安装写中文代码，纯标准库检索无需 GPU。"
+
+# 已渲染页面的站内路径，构建期收集用于 sitemap.xml
+_已渲染路径: set = set()
+
+
+def 渲染页面(标题: str, 内容html: str, 版本: dict, 讨论语言: str = "极快",
+         描述: str = "", 路径: str = "/") -> str:
+    """把内容嵌入基础模板。讨论语言决定页脚讨论区指向哪个语言仓库。
+
+    描述：<meta description>/OG 用，空则回退默认站点描述。
+    路径：canonical/og:url 用的站内绝对路径（以 / 开头），同时收集进 sitemap。
+    """
     模板 = (模板目录 / "基础.html").read_text(encoding="utf-8")
     讨论区 = (源目录 / "片段" / "讨论区.html").read_text(encoding="utf-8").replace(
         "{{讨论语言}}", 讨论语言
@@ -345,9 +393,14 @@ def 渲染页面(标题: str, 内容html: str, 版本: dict, 讨论语言: str =
         f'{名} {v.get("gitcode", "?")}'
         for 名, v in 版本.get("语言", {}).items()
     )
+    描述文本 = (描述 or 默认描述).strip()
+    if 路径:
+        _已渲染路径.add(路径)
     return (
         模板
         .replace("{{标题}}", 标题)
+        .replace("{{描述}}", 转义(描述文本))
+        .replace("{{路径}}", 转义(路径))
         .replace("{{内容}}", 内容html)
         .replace("{{讨论区}}", 讨论区)
         .replace("{{页脚版本}}", 页脚版本)
@@ -356,9 +409,41 @@ def 渲染页面(标题: str, 内容html: str, 版本: dict, 讨论语言: str =
     )
 
 
+def 摘要(md: str, 上限: int = 150) -> str:
+    """从 md 抽第一段正文当描述（去标题/列表符/代码块）。"""
+    for line in md.splitlines():
+        s = line.strip()
+        if not s or s.startswith("#") or s.startswith("-") or s.startswith("```"):
+            continue
+        s = re.sub(r'[*`>#\[\]]', '', s)
+        return s[:上限]
+    return ""
+
+
+def 写sitemap():
+    """按 _已渲染路径 生成 sitemap.xml + robots.txt。"""
+    日期 = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    条目 = []
+    for 路径 in sorted(_已渲染路径):
+        条目.append(
+            f"  <url><loc>{SITE}{转义(路径)}</loc>"
+            f"<lastmod>{日期}</lastmod></url>"
+        )
+    xml = (
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
+        + "\n".join(条目) + "\n</urlset>\n"
+    )
+    (OUT / "sitemap.xml").write_text(xml, encoding="utf-8")
+    (OUT / "robots.txt").write_text(
+        f"User-agent: *\nAllow: /\nSitemap: {SITE}/sitemap.xml\n", encoding="utf-8"
+    )
+    print(f"    sitemap.xml：{len(条目)} 个页面")
+
+
 def 构建首页(版本: dict):
     内容 = (源目录 / "首页.html").read_text(encoding="utf-8")
-    html = 渲染页面("quye — 中文 AI 编程中心", 内容, 版本)
+    html = 渲染页面("quye — 中文 AI 编程中心", 内容, 版本, 路径="/")
     (OUT / "index.html").write_text(html, encoding="utf-8")
 
 
@@ -370,7 +455,10 @@ def 构建语言页(版本: dict):
         名 = md_file.stem
         md = md_file.read_text(encoding="utf-8")
         内容html = 简易md转html(md)
-        html = 渲染页面(f"{名} — quye", 内容html, 版本, 讨论语言=名)
+        html = 渲染页面(
+            f"{名} — quye", 内容html, 版本, 讨论语言=名,
+            描述=f"{名}：{摘要(md)}", 路径=f"/语言/{名}.html",
+        )
         (语言目录 / f"{名}.html").write_text(html, encoding="utf-8")
         # 索引卡片的一句话简介：取 md 里第一段非标题正文
         简介 = ""
@@ -394,14 +482,19 @@ def 构建语言页(版本: dict):
         "<p><a href='/对照/'>去对照页并排跑同一需求 →</a></p></section>"
     )
     (语言目录 / "index.html").write_text(
-        渲染页面("语言 — quye", 索引html, 版本), encoding="utf-8"
+        渲染页面(
+            "语言 — quye", 索引html, 版本,
+            描述="极快、段言、光明、知行四门中文编程语言介绍与对比入口。",
+            路径="/语言/",
+        ),
+        encoding="utf-8",
     )
 
 
 def 构建路线图(版本: dict):
     md = (源目录 / "路线图.md").read_text(encoding="utf-8")
     内容html = 简易md转html(md)
-    html = 渲染页面("路线图 — quye", 内容html, 版本)
+    html = 渲染页面("路线图 — quye", 内容html, 版本, 描述=摘要(md), 路径="/路线图/")
     路线图目录 = OUT / "路线图"
     路线图目录.mkdir(parents=True, exist_ok=True)
     (路线图目录 / "index.html").write_text(html, encoding="utf-8")
@@ -409,7 +502,11 @@ def 构建路线图(版本: dict):
 
 def 构建本地(版本: dict):
     md = (源目录 / "本地.md").read_text(encoding="utf-8")
-    html = 渲染页面("本地开发 — quye", 简易md转html(md), 版本)
+    html = 渲染页面(
+        "本地开发 — quye", 简易md转html(md), 版本,
+        描述="四门中文编程语言的本地安装、CLI 用法与 IDE 配置指南。",
+        路径="/本地/",
+    )
     目录 = OUT / "本地"
     目录.mkdir(parents=True, exist_ok=True)
     (目录 / "index.html").write_text(html, encoding="utf-8")
@@ -419,7 +516,11 @@ def 构建工作台(版本: dict):
     md = (源目录 / "台.md").read_text(encoding="utf-8")
     内容顶部 = 简易md转html(md)
     body = (模板目录 / "台.html").read_text(encoding="utf-8")
-    html = 渲染页面("工作台 — quye", 内容顶部 + body + '\n<script src="/静态/台.js"></script>', 版本)
+    html = 渲染页面(
+        "工作台 — quye", 内容顶部 + body + '\n<script src="/静态/台.js"></script>', 版本,
+        描述="在浏览器里用中文描述需求，AI 选块组码后立即运行，无需安装任何环境。",
+        路径="/台/",
+    )
     工作台目录 = OUT / "台"
     工作台目录.mkdir(parents=True, exist_ok=True)
     (工作台目录 / "index.html").write_text(html, encoding="utf-8")
@@ -429,7 +530,11 @@ def 构建对照(版本: dict):
     md = (源目录 / "对照.md").read_text(encoding="utf-8")
     内容顶部 = 简易md转html(md)
     body = (模板目录 / "对照.html").read_text(encoding="utf-8")
-    html = 渲染页面("对照 — quye", 内容顶部 + body + '\n<script src="/静态/对照.js"></script>', 版本)
+    html = 渲染页面(
+        "对照 — quye", 内容顶部 + body + '\n<script src="/静态/对照.js"></script>', 版本,
+        描述="同一个需求，极快/段言/光明/知行四门语言并排运行，直观对比语法差异。",
+        路径="/对照/",
+    )
     目录 = OUT / "对照"
     目录.mkdir(parents=True, exist_ok=True)
     (目录 / "index.html").write_text(html, encoding="utf-8")
@@ -463,8 +568,15 @@ def 构建学习(版本: dict):
         "学习区 — quye",
         简易md转html(md) + 索引内容 + '\n<script src="/静态/学.js"></script>',
         版本,
+        描述="从零开始学段言和光明——19 个浏览器内判对关卡，在线写代码、即时验证。",
+        路径="/学/",
     )
     (学根 / "index.html").write_text(页, encoding="utf-8")
+
+    # 关卡清单交给前端（首页「每日一题」+ 进度导入导出校验都要用）
+    (OUT / "数据" / "学习清单.json").write_text(
+        json.dumps(清单, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
 
     # 关卡页
     关卡模板 = (模板目录 / "学关卡.html").read_text(encoding="utf-8")
@@ -489,6 +601,8 @@ def 构建学习(版本: dict):
                 body + '\n<script src="/静态/学.js"></script>',
                 版本,
                 讨论语言=语言,
+                描述=f"{语言}学习第 {条['序号']} 关：{条['标题']}。在浏览器内编写代码并自动判对。",
+                路径=f"/学/{语言}/{关卡}/",
             )
             目录 = 学根 / 语言 / 关卡
             目录.mkdir(parents=True, exist_ok=True)
@@ -556,6 +670,8 @@ def main():
     抽取并构建文档(版本)
     print("  自托管 Pyodide...")
     下载pyodide()
+    print("  生成 sitemap + robots.txt...")
+    写sitemap()
     写版本文件(版本)
     print(f"[quye] 构建完成 -> {OUT}")
 

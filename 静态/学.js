@@ -21,6 +21,70 @@ function 存完成(语言, 关卡) {
   });
 })();
 
+// ---- 索引页：进度导出/导入（换设备用） ----
+(function 进度导入导出() {
+  const 导出钮 = document.getElementById('导出进度');
+  const 导入钮 = document.getElementById('导入进度');
+  const 文件框 = document.getElementById('导入文件');
+  const 提示 = document.getElementById('进度提示');
+  const 统计 = document.getElementById('进度统计');
+  if (!导出钮 || !导入钮 || !文件框) return;
+
+  function 刷新统计() {
+    const 完成 = Object.values(读进度()).filter(Boolean).length;
+    const 总 = document.querySelectorAll('.关卡组 a').length;
+    if (统计) 统计.textContent = `已完成 ${完成} / ${总} 关`;
+  }
+  刷新统计();
+
+  function 说(t) { if (提示) 提示.textContent = t; }
+
+  导出钮.addEventListener('click', () => {
+    const 包 = { 版本: 1, 类型: 'quye学习进度', 进度: 读进度() };
+    const blob = new Blob([JSON.stringify(包, null, 2)], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'quye学习进度.json';
+    a.click();
+    URL.revokeObjectURL(a.href);
+    说('已导出');
+  });
+
+  导入钮.addEventListener('click', () => 文件框.click());
+
+  文件框.addEventListener('change', async () => {
+    const f = 文件框.files && 文件框.files[0];
+    if (!f) return;
+    try {
+      const 包 = JSON.parse(await f.text());
+      const 来 = 包 && 包.进度;
+      if (!来 || typeof 来 !== 'object' || Array.isArray(来)) throw new Error('格式不认');
+      // 只接受 "语言/关卡": true 形式，且键必须对得上页面上的关卡，避免灌入垃圾
+      const 合法键 = new Set();
+      document.querySelectorAll('.关卡组 a').forEach((a) => {
+        const m = a.getAttribute('href').match(/\/学\/([^/]+)\/([^/]+)\//);
+        if (m) 合法键.add(`${decodeURIComponent(m[1])}/${decodeURIComponent(m[2])}`);
+      });
+      const 合并 = 读进度();
+      let 新增 = 0;
+      for (const [k, v] of Object.entries(来)) {
+        if (v === true && 合法键.has(k) && !合并[k]) { 合并[k] = true; 新增++; }
+      }
+      localStorage.setItem(进度KEY, JSON.stringify(合并));
+      说(`已导入，新增 ${新增} 关`);
+      document.querySelectorAll('.关卡组 a').forEach((a) => {
+        const m = a.getAttribute('href').match(/\/学\/([^/]+)\/([^/]+)\//);
+        if (m && 合并[`${decodeURIComponent(m[1])}/${decodeURIComponent(m[2])}`]) a.classList.add('已完成');
+      });
+      刷新统计();
+    } catch (e) {
+      说(`导入失败：${e.message}`);
+    } finally {
+      文件框.value = '';
+    }
+  });
+})();
+
 // ---- 关卡页：判对 ----
 const 关卡节点 = document.querySelector('.学关卡');
 if (关卡节点) {

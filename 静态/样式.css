@@ -213,3 +213,28 @@ main p code { background: #f0f0f0; padding: 0.1em 0.4em; border-radius: 3px; }
 .文档索引 ul { list-style: none; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 8px; margin-bottom: var(--间-基); }
 .文档索引 ul a { display: block; padding: 10px 12px; background: var(--色-卡背景); border: 1px solid #eee; border-radius: 6px; text-decoration: none; color: var(--色-文字); }
 .文档索引 ul a:hover { border-color: var(--色-强调); }
+
+/* 文档搜索（M5） */
+.文档搜索 { margin-bottom: var(--间-基); }
+.文档搜索 input[type="search"] { width: 100%; padding: 10px 12px; font: inherit; border: 1px solid #ddd; border-radius: 6px; background: var(--色-卡背景); }
+.文档搜索 input[type="search"]:focus { outline: 2px solid var(--色-强调); outline-offset: 1px; border-color: var(--色-强调); }
+#文档搜索结果 { display: block !important; grid-template-columns: none !important; margin-top: 8px; }
+#文档搜索结果 li { display: block; padding: 8px 12px; background: var(--色-卡背景); border: 1px solid #eee; border-radius: 6px; margin-bottom: 6px; }
+#文档搜索结果 li a { display: inline; padding: 0; border: none; background: none; color: var(--色-强调); font-weight: 600; }
+#文档搜索结果 small { display: block; color: var(--色-浅字); font-size: 0.8rem; }
+#文档搜索结果 .无结果 { color: var(--色-浅字); }
+
+/* 首页每日一题（M5） */
+.每日一题-说明 { color: var(--色-浅字); font-size: 0.9rem; }
+.每日一题-卡 { display: flex; align-items: center; gap: 12px; padding: 14px 16px; background: var(--色-卡背景); border: 1px solid #eee; border-left: 4px solid var(--色-强调); border-radius: 6px; text-decoration: none; color: var(--色-文字); margin: 8px 0; }
+.每日一题-卡:hover { border-color: var(--色-强调); }
+.每日一题-语言 { font-size: 0.8rem; padding: 2px 8px; border-radius: 999px; background: var(--色-强调); color: #fff; }
+.每日一题-标题 { font-weight: 600; }
+
+/* 学习进度导入导出（M5） */
+.进度工具 { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: var(--间-基); font-size: 0.9rem; }
+.进度工具 button { padding: 6px 12px; font: inherit; border: 1px solid #ddd; border-radius: 6px; background: var(--色-卡背景); color: var(--色-文字); cursor: pointer; }
+.进度工具 button:hover { border-color: var(--色-强调); color: var(--色-强调); }
+.进度工具 button:focus-visible { outline: 2px solid var(--色-强调); outline-offset: 1px; }
+.进度提示 { color: var(--色-浅字); }
+

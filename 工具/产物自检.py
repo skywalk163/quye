@@ -21,19 +21,25 @@ OUT = Path(__file__).resolve().parent.parent / "出"
     "学/段言/hello/index.html",
     "学/光明/09_异常/index.html",
     "数据/学习基线.json",
+    "数据/学习清单.json",
     "数据/示例集.json",
     "数据/示例结果.json",
+    "数据/文档搜索索引.json",
     "静态/学.js",
     "静态/台.js",
     "静态/对照.js",
     "静态/执行器.js",
     "静态/讨论区.js",
+    "静态/文档搜索.js",
+    "静态/每日一题.js",
     "静态/样式.css",
     "静态/py/极快.zip",
     "静态/py/段言.zip",
     "静态/py/光明.zip",
     "静态/py/知行.zip",
     "版本.json",
+    "sitemap.xml",
+    "robots.txt",
     "CNAME",
 ]
 
@@ -77,6 +83,26 @@ def 主() -> bool:
     学页数 = len(list((OUT / "学").rglob("index.html"))) if (OUT / "学").exists() else 0
     if 学页数 != 20:
         问题.append(f"学习区页面数 {学页数}，期望 20（19 关 + 1 索引）")
+
+    # SEO 门禁（M5）：每页必须有非空 description + canonical，且被 sitemap 收录
+    无描述, 无canonical = [], []
+    for f in html文件:
+        文本 = f.read_text(encoding="utf-8")
+        m = re.search(r'<meta name="description" content="([^"]*)"', 文本)
+        if not m or not m.group(1).strip():
+            无描述.append(f.relative_to(OUT).as_posix())
+        if not re.search(r'<link rel="canonical" href="https://[^"]+"', 文本):
+            无canonical.append(f.relative_to(OUT).as_posix())
+    if 无描述:
+        问题.append(f"缺 meta description {len(无描述)} 页：{无描述[:10]}")
+    if 无canonical:
+        问题.append(f"缺 canonical {len(无canonical)} 页：{无canonical[:10]}")
+
+    sitemap = OUT / "sitemap.xml"
+    if sitemap.exists():
+        收录 = set(re.findall(r'<loc>https://quye\.com([^<]*)</loc>', sitemap.read_text(encoding="utf-8")))
+        if len(收录) != len(html文件):
+            问题.append(f"sitemap 收录 {len(收录)} 条，html 页面 {len(html文件)} 个，数量不符")
 
     print(f"检查 {len(html文件)} 个 html、{链接总数} 条站内链接、学习区 {学页数} 页")
     if 问题:
