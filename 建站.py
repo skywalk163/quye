@@ -224,6 +224,11 @@ def 抽取语言包(版本: dict) -> None:
     # 块索引.json 里已内联的示例，不需要——排掉 blocks/，别让访客白下几 MB。
     # 但 选块.py + 索引.json 要留：工作台选块要在 Pyodide 里 import 选块 并 load_index，
     # 这俩是它的运行期依赖（索引 gzip 后进 zip 约 0.5 MB，且仅在用户真用光明时才下载）。
+    #
+    # 段言不一样：它走极快路数，运行期现调 粘合.synthesize 组码，而段言粘合器是
+    # **内联式**（把选中积木的段落定义拼进生成文件，因为段言单文件 run 不支持跨 .duan
+    # 导入）。所以 粘合.py 与分领域 .duan 源码都是运行期依赖，必须进包——好在段言只有
+    # 200 个小积木，压缩后增量可以忽略。
     import zipfile
     for 名 in ["极快", "段言", "光明", "知行"]:
         目录 = py目标 / 名
@@ -235,9 +240,14 @@ def 抽取语言包(版本: dict) -> None:
                 if not p.is_file() or p.name == "清单.json":
                     continue
                 相对 = p.relative_to(目录)
-                # 积木库里只保留选块运行期要的两样，其余（blocks/ 源码树）不进包
-                if "积木库" in 相对.parts and p.name not in ("选块.py", "索引.json"):
-                    continue
+                # 积木库里只保留各语言选块/组码运行期真正要的那几样
+                if "积木库" in 相对.parts:
+                    if 名 == "段言":
+                        if (p.name not in ("选块.py", "索引.json", "粘合.py")
+                                and p.suffix != ".duan"):
+                            continue
+                    elif p.name not in ("选块.py", "索引.json"):
+                        continue
                 zf.write(p, 相对.as_posix())
         print(f"    {名}.zip 打包 {zip路径.stat().st_size // 1024} KB")
 

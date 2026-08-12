@@ -44,3 +44,28 @@ def 抽取(仓库根: Path, 目标: Path) -> None:
         抽出 += 1
     if 抽出 < 10:
         raise RuntimeError(f"段言抽取失败：只抽到 {抽出} 个 .py，可能路径结构变更")
+
+    # 积木库（工作台选块运行期依赖）：
+    # - 选块.py：Pyodide 内 import，本地关键词打分
+    # - 索引.json：200 个块的契约
+    # - 粘合.py：synthesize(方案) 合成 .duan 源码
+    # - 分领域 .duan 源码：粘合器要内联段落定义
+    积木库源 = 仓库根 / "积木库"
+    if 积木库源.exists():
+        积木库目标 = 目标 / "积木库"
+        积木库目标.mkdir(exist_ok=True)
+        for 名 in ("索引.json", "选块.py", "粘合.py"):
+            src = 积木库源 / 名
+            if src.exists():
+                shutil.copy2(src, 积木库目标 / 名)
+        # 分领域子目录里的 .duan 文件（粘合器 _提取段落 要用）
+        块数 = 0
+        for p in 积木库源.rglob("*.duan"):
+            相对 = p.relative_to(积木库源)
+            目标文件 = 积木库目标 / 相对
+            目标文件.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(p, 目标文件)
+            块数 += 1
+        print(f"    · 段言积木库：索引/选块/粘合 + {块数} 个 .duan")
+    else:
+        print("    ! 段言积木库目录不存在，跳过")

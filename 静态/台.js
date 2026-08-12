@@ -91,9 +91,9 @@ function 转义(s) {
 }
 
 function 切换语言(名) {
-  // 选块专属：极快 + 光明（都能靠索引挑候选块 / 积木）
+  // 选块专属：极快 + 段言 + 光明（都能靠索引挑候选块 / 积木）
   document.querySelectorAll('.选块专属').forEach((el) => {
-    el.style.display = (名 === '极快' || 名 === '光明') ? '' : 'none';
+    el.style.display = (名 === '极快' || 名 === '段言' || 名 === '光明') ? '' : 'none';
   });
   // 极快专属：多步管道，依赖 glue.synthesize，只有极快侧接上
   document.querySelectorAll('.极快专属').forEach((el) => {
@@ -137,7 +137,7 @@ function 取光明索引() {
   return _光明索引Promise;
 }
 
-// 选块：按当前语言分别走极快 retrieval 或光明 选块.py（都是 Pyodide 内本地打分，零 token）
+// 选块：按当前语言分别走极快 retrieval、段言 选块.py 或光明 选块.py（都是 Pyodide 内本地打分，零 token）
 document.getElementById('选块').addEventListener('click', async () => {
   const 需求 = document.getElementById('需求').value.trim();
   if (!需求) return;
@@ -145,7 +145,9 @@ document.getElementById('选块').addEventListener('click', async () => {
   const 状态 = document.getElementById('状态');
   状态.textContent = '选块中...';
 
-  const 选块代码 = 语言 === '光明' ? `
+  let 选块代码;
+  if (语言 === '光明') {
+    选块代码 = `
 import json, sys
 # 光明抽取器把 选块.py 拷到了 /光明/积木库/，索引位置也在那里
 sys.path.insert(0, '/光明/积木库')
@@ -156,7 +158,29 @@ _cs = _选块.select_blocks(${JSON.stringify(需求)}, _idx, top=5)
 json.dumps([{'名称': c['名称'], '领域': c['领域'], '分数': c['分数'],
              '导出名': c.get('导出名', c['名称']), '描述': c.get('描述', '')}
             for c in _cs], ensure_ascii=False)
-` : `
+`;
+  } else if (语言 === '段言') {
+    // 段言 索引里 输入/路径 都是齐的，一起带回来给 段言组码 用
+    选块代码 = `
+import json, sys
+sys.path.insert(0, '/段言/积木库')
+import 选块 as _选块
+_idx = _选块.load_index('/段言/积木库/索引.json')
+_cs = _选块.select_blocks(${JSON.stringify(需求)}, _idx, top=5)
+_by = {b['名称']: b for b in _idx.get('块', [])}
+_out = []
+for c in _cs:
+    b = _by.get(c['名称'], {})
+    _out.append({'名称': c['名称'], '领域': c['领域'], '分数': c['分数'],
+                 '导出名': c.get('导出名', c['名称']),
+                 '路径': c.get('路径', b.get('路径', '')),
+                 '输入': [{'名': i.get('名', '?'), '类型': i.get('类型', '?')}
+                          for i in (b.get('输入') or [])]})
+json.dumps(_out, ensure_ascii=False)
+`;
+  } else {
+    // 极快
+    选块代码 = `
 import json
 from jikuai.ai.retrieval import retrieve
 _res = retrieve(${JSON.stringify(需求)}, top=5)
@@ -172,6 +196,7 @@ for r in _res:
     })
 json.dumps(_out, ensure_ascii=False)
 `;
+  }
 
   try {
     const r = await 跑Python(语言, 选块代码);
@@ -195,9 +220,13 @@ function 示例参数(输入项) {
   const 名 = 输入项.名 || '';
   if (名 in _示例值表) return String(_示例值表[名]);
   const 类型 = 输入项.类型 || '数';
+  // 段言索引里的类型带泛型参数（列表[数]），前缀判定比等值判定稳
+  if (类型.startsWith('列表') || 类型.startsWith('数列')) return '[1, 2, 3]';
   if (类型 === '数') return '100';
+  if (类型 === '小数') return '2.5';
   if (类型 === '文' || 类型 === '串' || 类型 === '文本') return '"示例"';
-  if (类型 === '真假' || 类型 === '布尔') return '真';
+  if (类型 === '真假' || 类型 === '布尔' || 类型 === '逻辑') return '真';
+  if (类型 === '字典') return '{}';
   return '100';
 }
 
@@ -210,7 +239,7 @@ function 填示例参数(骨架, 输入s) {
 
 function 渲染候选(候选, 语言) {
   const div = document.getElementById('候选');
-  const 极快 = 语言 !== '光明';
+  const 极快 = 语言 === '极快';
   div.innerHTML = 候选.map((c, i) => `
     <div class="候选卡" data-idx="${i}">
       <div class="候选名">${转义(c.名称)}</div>
@@ -222,7 +251,8 @@ function 渲染候选(候选, 语言) {
     el.addEventListener('click', async (ev) => {
       if (ev.target.classList.contains('候选加管道')) return; // 加管道不触发组码
       const c = 候选[Number(el.dataset.idx)];
-      if (极快) return 极快组码(c);
+      if (语言 === '极快') return 极快组码(c);
+      if (语言 === '段言') return 段言组码(c);
       return 光明取码(c);
     });
   });
@@ -253,6 +283,43 @@ synthesize(方案)
       ? `入参 ${输入s.map((x) => x.名).join('、')}（已填示例值，可改）`
       : '无入参';
     设状态(`已组出 ${c.名称} 的代码 · ${参数说明}`);
+  } catch (e) {
+    设状态(`[组码失败] ${e.message}`);
+  }
+}
+
+// 段言：调 粘合.synthesize 组一个单步方案。段言积木入参走 共享 常量，
+// 用 示例参数() 按入参 schema 生成示例值。synthesize 直接返回完整 .duan 源码。
+async function 段言组码(c) {
+  设状态(`组 ${c.名称} 的代码…`);
+  const 输入s = c.输入 || [];
+  // 共享变量：每个入参一个「设 名 为 值。」，名字用积木入参名（避免撞积木内部变量）
+  const 共享 = 输入s.map((i) => ({ 名: `_${i.名 || '入参'}`, 值: 示例参数(i) }));
+  const 参数名列表 = 共享.map((x) => x.名);
+  const 方案 = {
+    需求: document.getElementById('需求').value.trim(),
+    共享: 共享,
+    步骤: [{
+      块: c.名称,
+      领域: c.领域,
+      导出名: c.导出名 || c.名称,
+      路径: c.路径 || '',
+      参数: 参数名列表,
+    }],
+  };
+  const 组码代码 = `
+import sys
+sys.path.insert(0, '/段言/积木库')
+from 粘合 import synthesize
+synthesize(${JSON.stringify(方案)})
+`;
+  try {
+    const r = await 跑Python('段言', 组码代码);
+    document.getElementById('代码').value = (r.stdout || '').replace(/\r\n/g, '\n');
+    const 说明 = 输入s.length
+      ? `入参 ${输入s.map((x) => x.名).join('、')}（已填示例值，可改）`
+      : '无入参';
+    设状态(`已组出 ${c.名称} 的段言代码 · ${说明}`);
   } catch (e) {
     设状态(`[组码失败] ${e.message}`);
   }
