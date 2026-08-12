@@ -13,18 +13,48 @@ const CDN = `https://cdn.jsdelivr.net/pyodide/v${self.PYODIDE_VERSION}/full/`;
 let _py = null;
 let _语言就绪 = new Set();
 
+// GitHub Pages 上自托管会被限速到 ~12 KB/s，10 MB 的 pyodide.asm.wasm 要十几分钟，
+// 主线程 180 秒就超时了。而「慢」不抛异常，所以旧的「自托管失败才回退 CDN」永远不回退。
+// 改成拿 wasm 的头 128 KB 赛跑测真实吞吐（不靠 Range，读够就 abort），谁先到用谁。
+const 探测字节 = 128 * 1024;
+
+async function 探源(base) {
+  const 闸 = new AbortController();
+  const resp = await fetch(base + "pyodide.asm.wasm", { signal: 闸.signal });
+  if (!resp.ok) throw new Error(`${base} → HTTP ${resp.status}`);
+  const 读者 = resp.body.getReader();
+  let 已读 = 0;
+  while (已读 < 探测字节) {
+    const { done, value } = await 读者.read();
+    if (done) break;
+    已读 += value.length;
+  }
+  闸.abort();  // 只是测速，剩下的交给 loadPyodide
+  return base;
+}
+
 async function 初始化Pyodide() {
   if (_py) return _py;
-  postMessage({ 类型: "进度", 消息: "加载 Pyodide runtime..." });
+  const 自托管绝对 = new URL(自托管, self.location.href).href;
+  postMessage({ 类型: "进度", 消息: "测速选择 Pyodide 源..." });
+  let 首选;
+  try {
+    首选 = await Promise.any([探源(自托管绝对), 探源(CDN)]);
+  } catch {
+    首选 = 自托管绝对;  // 两条都不通，仍走自托管让 loadPyodide 报真实错误
+  }
+  const 备选 = 首选 === CDN ? 自托管绝对 : CDN;
+
   const 试 = async (base) => {
+    postMessage({ 类型: "进度", 消息: `加载 Pyodide runtime（${base === CDN ? "CDN" : "自托管"}）...` });
     self.importScripts(base + "pyodide.js");
     return await self.loadPyodide({ indexURL: base });
   };
   try {
-    _py = await 试(new URL(自托管, self.location.href).href);
+    _py = await 试(首选);
   } catch (e1) {
-    postMessage({ 类型: "进度", 消息: `自托管失败，回退 CDN: ${e1.message}` });
-    _py = await 试(CDN);
+    postMessage({ 类型: "进度", 消息: `换源重试：${e1.message}` });
+    _py = await 试(备选);
   }
   return _py;
 }
