@@ -39,3 +39,12 @@ jobs:
       - name: 块示例自检（软门禁，依赖浏览器沙箱）
         continue-on-error: true
         run: python3 工具/块示例自检.py
+
+      # 部署到 1.5 本地 Pages：复用现有 nginx(80) 的 /pages/ 子路径，零新服务/零新端口。
+      # 站点产物在仓库根「出/」目录（建站.py 输出）。webroot 已 chown 给 act_runner，runner 可直接写。
+      # 访问地址：http://192.168.1.5/pages/skywalk/quye/
+      - name: 部署到 1.5 Pages
+        run: |
+          rm -rf /usr/local/www/gitea-pages/pages/skywalk/quye
+          mkdir -p /usr/local/www/gitea-pages/pages/skywalk/quye
+          cd 出 && cp -R . /usr/local/www/gitea-pages/pages/skywalk/quye/
