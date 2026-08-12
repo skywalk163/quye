@@ -353,9 +353,12 @@ def 下载pyodide() -> None:
         缓存文件 = 缓存 / name
         if not (缓存文件.exists() and 缓存文件.stat().st_size > 1000):
             url = f"{PYODIDE_BASE}/{name}"
-            print(f"    拉 {name}...")
+            print(f"    拉 {name} (超时 60s)...")
             try:
-                urllib.request.urlretrieve(url, 缓存文件)
+                # 用带 timeout 的 urlopen 替代 urlretrieve：本地 runner 拉 jsdelivr CDN 可能极慢，
+                # urlretrieve 无 timeout 会永久挂起、拖垮整个构建。拉不动则快速失败、降级 CDN。
+                with urllib.request.urlopen(url, timeout=60) as r, open(缓存文件, "wb") as w:
+                    shutil.copyfileobj(r, w)
             except Exception as e:
                 print(f"    ! 拉 {name} 失败：{str(e)[:80]}；用户端将降级到 CDN")
                 continue
