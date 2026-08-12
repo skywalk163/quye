@@ -112,6 +112,24 @@ def 抽取(仓库根: Path, 目标: Path) -> None:
         if s != 原文:
             retr.write_text(s, encoding="utf-8")
 
+    # 同类布局假设散在 evaluator / module_loader / stdlib_contract 里：
+    # 全部用 `here/../../stdlib`（假设 src/jikuai/ 布局），本布局要减一级 → `here/../stdlib`。
+    # 一个子串替换覆盖三处；命中 0 处也不失败，只告警——上游若重构了路径拼法会由
+    # 命中率实测和一次实际的「历法/属相」调用兜住。
+    stdlib路径旧 = "'..', '..', 'stdlib'"
+    stdlib路径新 = "'..', 'stdlib'"
+    for 名 in ("evaluator.py", "module_loader.py", "stdlib_contract.py"):
+        f = 目标 / "jikuai" / 名
+        if not f.exists():
+            continue
+        原 = f.read_text(encoding="utf-8")
+        if stdlib路径旧 in 原:
+            f.write_text(原.replace(stdlib路径旧, stdlib路径新), encoding="utf-8")
+        elif stdlib路径新 in 原:
+            print(f"    · 极快 {名} stdlib 路径已适配本布局，跳过")
+        else:
+            print(f"    ! 极快 {名} stdlib 路径写法与预期不符，跳过；历法/属相类调用可能报 FileNotFoundError")
+
     # 用保留签名的替身换掉走 git subprocess 的 sources.py
     坑 = 目标 / "jikuai" / "pkg" / "sources.py"
     if 坑.exists():
