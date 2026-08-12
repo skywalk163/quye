@@ -50,15 +50,19 @@ def 抽取(仓库根: Path, 目标: Path) -> None:
             if p.is_file() and p.name not in stdlib跳过:
                 shutil.copy2(p, stdlib目标 / p.name)
 
-    # 积木库（块浏览器消费：索引 + blocks_v5 源码）
+    # 积木库（块浏览器消费：索引 + blocks_v5 源码 + 选块打分器）
     积木库源 = 仓库根 / "积木库"
     索引源 = 积木库源 / "索引.json"
     blocks源 = 积木库源 / "blocks_v5"
+    选块源 = 积木库源 / "选块.py"
     if 索引源.exists() and blocks源.exists():
         积木库目标 = 目标 / "积木库"
         积木库目标.mkdir(exist_ok=True)
         shutil.copy2(索引源, 积木库目标 / "索引.json")
         shutil.copytree(blocks源, 积木库目标 / "blocks", dirs_exist_ok=True)
-        print(f"    · 光明积木库：索引 + blocks")
+        # 选块器：Pyodide 端 import 走的就是这份，零 token 关键词打分
+        if 选块源.exists():
+            shutil.copy2(选块源, 积木库目标 / "选块.py")
+        print(f"    · 光明积木库：索引 + blocks + 选块.py")
     else:
         print("    ! 光明积木库索引或 blocks_v5 目录不存在，跳过")

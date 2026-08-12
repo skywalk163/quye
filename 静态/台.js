@@ -91,6 +91,11 @@ function 转义(s) {
 }
 
 function 切换语言(名) {
+  // 选块专属：极快 + 光明（都能靠索引挑候选块 / 积木）
+  document.querySelectorAll('.选块专属').forEach((el) => {
+    el.style.display = (名 === '极快' || 名 === '光明') ? '' : 'none';
+  });
+  // 极快专属：多步管道，依赖 glue.synthesize，只有极快侧接上
   document.querySelectorAll('.极快专属').forEach((el) => {
     el.style.display = 名 === '极快' ? '' : 'none';
   });
@@ -125,13 +130,33 @@ document.getElementById('代码').addEventListener('keydown', (e) => {
   }
 });
 
-// 极快选块：调 Pyodide 里的 retrieval，展示候选卡片，点候选后组码
+// 光明块索引缓存（点光明候选卡时按 (语言=光明, 名称) 取合成示例）
+let _光明索引Promise = null;
+function 取光明索引() {
+  if (!_光明索引Promise) _光明索引Promise = fetch('/数据/块索引.json').then(r => r.json());
+  return _光明索引Promise;
+}
+
+// 选块：按当前语言分别走极快 retrieval 或光明 选块.py（都是 Pyodide 内本地打分，零 token）
 document.getElementById('选块').addEventListener('click', async () => {
   const 需求 = document.getElementById('需求').value.trim();
   if (!需求) return;
+  const 语言 = document.getElementById('语言选择').value;
   const 状态 = document.getElementById('状态');
   状态.textContent = '选块中...';
-  const 选块代码 = `
+
+  const 选块代码 = 语言 === '光明' ? `
+import json, sys
+# 光明抽取器把 选块.py 拷到了 /光明/积木库/，索引位置也在那里
+sys.path.insert(0, '/光明/积木库')
+import 选块 as _选块
+_idx = _选块.load_index('/光明/积木库/索引.json')
+_cs = _选块.select_blocks(${JSON.stringify(需求)}, _idx, top=5)
+# 光明索引本身 输入/描述 常为空，这里只带回卡片要的字段；组码时再回读浏览器索引拿合成示例
+json.dumps([{'名称': c['名称'], '领域': c['领域'], '分数': c['分数'],
+             '导出名': c.get('导出名', c['名称']), '描述': c.get('描述', '')}
+            for c in _cs], ensure_ascii=False)
+` : `
 import json
 from jikuai.ai.retrieval import retrieve
 _res = retrieve(${JSON.stringify(需求)}, top=5)
@@ -147,11 +172,12 @@ for r in _res:
     })
 json.dumps(_out, ensure_ascii=False)
 `;
+
   try {
-    const r = await 跑Python('极快', 选块代码);
+    const r = await 跑Python(语言, 选块代码);
     const 候选 = JSON.parse(r.stdout || '[]');
-    渲染候选(候选);
-    状态.textContent = `选出 ${候选.length} 个候选块`;
+    渲染候选(候选, 语言);
+    状态.textContent = `选出 ${候选.length} 个候选`;
   } catch (e) {
     document.getElementById('候选').textContent = `[选块失败] ${e.message}`;
     状态.textContent = '选块失败';
@@ -182,39 +208,22 @@ function 填示例参数(骨架, 输入s) {
   return 骨架.replace(/\(\s*\?\s*\)/, `(${参数串})`);
 }
 
-function 渲染候选(候选) {
+function 渲染候选(候选, 语言) {
   const div = document.getElementById('候选');
+  const 极快 = 语言 !== '光明';
   div.innerHTML = 候选.map((c, i) => `
     <div class="候选卡" data-idx="${i}">
       <div class="候选名">${转义(c.名称)}</div>
       <div class="候选meta">${转义(c.领域)} · ${Number(c.分数).toFixed(2)}</div>
-      <button type="button" class="候选加管道" data-idx="${i}">加入管道</button>
+      ${极快 ? `<button type="button" class="候选加管道" data-idx="${i}">加入管道</button>` : ''}
     </div>
   `).join('');
   div.querySelectorAll('.候选卡').forEach((el) => {
     el.addEventListener('click', async (ev) => {
       if (ev.target.classList.contains('候选加管道')) return; // 加管道不触发组码
       const c = 候选[Number(el.dataset.idx)];
-      const 组码代码 = `
-from glue import synthesize
-方案 = {"步骤": [{"块": ${JSON.stringify(c.名称)}, "领域": ${JSON.stringify(c.领域)}, "导出名": ${JSON.stringify(c.导出名 || c.名称)}}]}
-synthesize(方案)
-`;
-      try {
-        const r = await 跑Python('极快', 组码代码);
-        const 骨架 = (r.stdout || '').trim();
-        // synthesize 只写一个 `(?)`，不体现真实入参个数——增值税这类多参块
-        // 照原样只填一个值会让其余参数留 None，块内部算术直接崩。
-        // 这里按 索引.json 的 输入 schema 一次填齐示例值，代码开箱可跑。
-        const 输入s = c.输入 || [];
-        document.getElementById('代码').value = 填示例参数(骨架, 输入s);
-        const 参数说明 = 输入s.length
-          ? `入参 ${输入s.map((x) => x.名).join('、')}（已填示例值，可改）`
-          : '无入参';
-        设状态(`已组出 ${c.名称} 的代码 · ${参数说明}`);
-      } catch (e) {
-        设状态(`[组码失败] ${e.message}`);
-      }
+      if (极快) return 极快组码(c);
+      return 光明取码(c);
     });
   });
   div.querySelectorAll('.候选加管道').forEach((btn) => {
@@ -223,6 +232,50 @@ synthesize(方案)
       加入管道(候选[Number(btn.dataset.idx)]);
     });
   });
+}
+
+// 极快：调 glue.synthesize 组骨架，再按 索引.json 的 输入 schema 填示例参数
+async function 极快组码(c) {
+  const 组码代码 = `
+from glue import synthesize
+方案 = {"步骤": [{"块": ${JSON.stringify(c.名称)}, "领域": ${JSON.stringify(c.领域)}, "导出名": ${JSON.stringify(c.导出名 || c.名称)}}]}
+synthesize(方案)
+`;
+  try {
+    const r = await 跑Python('极快', 组码代码);
+    const 骨架 = (r.stdout || '').trim();
+    // synthesize 只写一个 `(?)`，不体现真实入参个数——增值税这类多参块
+    // 照原样只填一个值会让其余参数留 None，块内部算术直接崩。
+    // 这里按 索引.json 的 输入 schema 一次填齐示例值，代码开箱可跑。
+    const 输入s = c.输入 || [];
+    document.getElementById('代码').value = 填示例参数(骨架, 输入s);
+    const 参数说明 = 输入s.length
+      ? `入参 ${输入s.map((x) => x.名).join('、')}（已填示例值，可改）`
+      : '无入参';
+    设状态(`已组出 ${c.名称} 的代码 · ${参数说明}`);
+  } catch (e) {
+    设状态(`[组码失败] ${e.message}`);
+  }
+}
+
+// 光明：积木没有 glue.synthesize；直接回读浏览器索引里构建期合成好的示例
+// （源码 + `打印(段落名(样例值))`），可运行的直接填进编辑器
+async function 光明取码(c) {
+  设状态(`取 ${c.名称} 的示例…`);
+  try {
+    const idx = await 取光明索引();
+    const b = (idx.块 || []).find((x) => x.名称 === c.名称 && x.语言 === '光明');
+    if (!b || !b.示例) {
+      设状态(`${c.名称} 无合成示例，请手写调用`);
+      return;
+    }
+    document.getElementById('代码').value = b.示例;
+    设状态(b.可运行
+      ? `已填入 ${c.名称} 的示例（构建期验证可跑）`
+      : `已填入 ${c.名称} 的示例（构建期未跑通，可能需手改）`);
+  } catch (e) {
+    设状态(`[取码失败] ${e.message}`);
+  }
 }
 
 // ---------- M6：多步管道组装 ----------
