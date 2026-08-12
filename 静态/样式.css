@@ -258,6 +258,7 @@ main p code { background: #f0f0f0; padding: 0.1em 0.4em; border-radius: 3px; }
 .语言标签:focus-visible { outline: 2px solid var(--色-主); outline-offset: 1px; }
 .语言标签.激活 { background: var(--色-主); border-color: var(--色-主); color: #fff; }
 .块提示 { font-size: 0.85rem; color: var(--色-浅字); margin: 6px 0 10px; min-height: 1.2em; }
+.详载入 { color: var(--色-浅字); font-size: 0.9rem; }
 .块网格 { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px; }
 .块卡 { display: flex; flex-direction: column; gap: 4px; text-align: left; padding: 12px 14px; font: inherit; background: var(--色-卡背景); border: 1px solid #eee; border-radius: 6px; cursor: pointer; color: var(--色-文字); }
 .块卡:hover { border-color: var(--色-强调); }

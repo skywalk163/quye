@@ -1,4 +1,7 @@
-// /块 页：前端驱动渲染——从 /数据/块索引.json 拉取完整索引，按语言/领域/搜索现场渲染卡片。
+// /块 页：前端驱动渲染。
+// 两份数据分工：
+//   /数据/块清单.json —— 卡片要的那几个字段，首屏拉它，驱动网格
+//   /数据/块索引.json —— 全量含示例源码（体积的九成在示例上），点开某块才拉
 // 服务端只输出筛选按钮与空网格容器，不再内联上万张卡片（原先把 index.html 撑到 3 MB+）。
 (function () {
   const 网格 = document.getElementById('块网格');
@@ -8,8 +11,8 @@
   if (!网格 || !详情) return;
 
   // ---- 数据 ----
-  let _全部块 = [];  // 索引加载后填充
-  let _索引Promise = null;
+  let _清单 = [];        // 轻清单，首屏加载
+  let _索引Promise = null;  // 全量索引，首次点卡片才拉
   function 取索引() {
     if (!_索引Promise) _索引Promise = fetch('/数据/块索引.json').then(r => r.json());
     return _索引Promise;
@@ -45,43 +48,41 @@
   }
 
   // ---- 渲染卡片网格 ----
+  // 上限 500：匹配全部一万条时不硬渲染，提示缩窄筛选——DOM 节点数是这页的主要成本
+  const 渲染上限 = 500;
+
   function 渲染网格() {
-    const 匹配 = _全部块.filter(b => {
+    const 匹配 = _清单.filter(b => {
       if (当前语言 !== '全部' && b.语言 !== 当前语言) return false;
       if (当前领域 !== '全部' && b.领域 !== 当前领域) return false;
-      if (当前搜索 && !b.名称.toLowerCase().includes(当前搜索) && !(b.描述 || '').toLowerCase().includes(当前搜索)) return false;
+      if (当前搜索
+          && !b.名称.toLowerCase().includes(当前搜索)
+          && !(b.描述 || '').toLowerCase().includes(当前搜索)) return false;
       return true;
     });
-    // 上限：超过 500 不渲染全部，提示缩窄筛选
-    const 上限 = 500;
-    const 截断 = 匹配.length > 上限;
-    const 渲染列 = 截断 ? 匹配.slice(0, 上限) : 匹配;
-    const html = 渲染列.map(b => {
-      const 入参 = (b.输入 || []).map(i => i.名 || '?').join('、') || '无入参';
-      const 导出名 = (b.导出 || [b.名称])[0];
-      const 出类型 = b.输出 && b.输出.类型 || '?';
-      return `<button type="button" class="块卡" data-语言="${esc(b.语言)}" data-领域="${esc(b.领域)}" data-名称="${esc(b.名称)}">` +
-        `<span class="块名">${esc(b.名称)}</span>` +
-        `<span class="块签名">${esc(导出名)}(${esc(入参)}) → ${esc(出类型)}</span>` +
-        `<span class="块描述">${esc(b.描述 || '')}</span>` +
-        `<span class="块标记">${esc(b.语言)} · ${esc(b.领域)}${b.稳定性 ? ' · ' + esc(b.稳定性) : ''}</span>` +
-        `</button>`;
-    }).join('');
-    网格.innerHTML = html;
+    const 截断 = 匹配.length > 渲染上限;
+    网格.innerHTML = (截断 ? 匹配.slice(0, 渲染上限) : 匹配).map(b =>
+      `<button type="button" class="块卡" data-语言="${esc(b.语言)}"`
+      + ` data-领域="${esc(b.领域)}" data-名称="${esc(b.名称)}">`
+      + `<span class="块名">${esc(b.名称)}</span>`
+      + `<span class="块签名">${esc(b.签名)}</span>`
+      + `<span class="块描述">${esc(b.描述 || '')}</span>`
+      + `<span class="块标记">${esc(b.语言)} · ${esc(b.领域)}`
+      + `${b.稳定性 ? ' · ' + esc(b.稳定性) : ''}</span>`
+      + `</button>`
+    ).join('');
     if (提示) {
-      if (匹配.length === 0) 提示.textContent = '未找到匹配的块，试试其他搜索词或领域？';
-      else if (截断) 提示.textContent = `匹配 ${匹配.length} 个，已显示前 ${上限} 个——请缩窄筛选。`;
+      if (匹配.length === 0) 提示.textContent = '没有匹配的块，换个搜索词或领域试试。';
+      else if (截断) 提示.textContent = `匹配 ${匹配.length} 个，已显示前 ${渲染上限} 个——请缩窄筛选。`;
       else 提示.textContent = `显示 ${匹配.length} 个`;
     }
   }
 
-  // ---- 初始化：拉索引 → 渲染 ----
-  取索引().then(data => {
-    _全部块 = data.块 || [];
-    渲染网格();
-  }).catch(e => {
-    if (提示) 提示.textContent = `加载索引失败：${e.message}`;
-  });
+  // ---- 初始化 ----
+  fetch('/数据/块清单.json')
+    .then(r => r.json())
+    .then(data => { _清单 = data.块 || []; 渲染网格(); })
+    .catch(e => { if (提示) 提示.textContent = `加载块清单失败：${e.message}`; });
 
   // ---- Worker（懒建，与工作台同规则；执行 5 秒超时） ----
   const 加载超时 = 180000;
@@ -140,11 +141,19 @@
     if (!卡) return;
     const 名 = 卡.dataset.名称;
     const 语言 = 卡.dataset.语言;
-    const b = _全部块.find(x => x.名称 === 名 && x.语言 === 语言);
-    if (!b) return;
-    渲染详情(b);
+    // 首次点击要把全量索引拉下来，先把面板亮出来给个等待态
     详情.hidden = false;
+    详情.innerHTML = '<p class="详载入">载入示例…</p>';
     详情.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    try {
+      const 索引 = await 取索引();
+      // 名称在多语言下可能重名（极快/光明 都有「求和」），按 (语言,名称) 唯一定位
+      const b = (索引.块 || []).find(x => x.名称 === 名 && x.语言 === 语言);
+      if (!b) { 详情.innerHTML = '<p class="详载入">索引里没有这一条，可能构建产物不同步。</p>'; return; }
+      渲染详情(b);
+    } catch (err) {
+      详情.innerHTML = `<p class="详载入">示例索引加载失败：${esc(err.message)}</p>`;
+    }
   });
 
   function 渲染详情(b) {
