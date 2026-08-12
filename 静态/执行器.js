@@ -111,6 +111,27 @@ if '/${语言}' not in sys.path:
   _语言就绪.add(语言);
 }
 
+// 段言 和 光明 都是扁平模块布局，撞了 44 个同名 .py（parser_core / code_generator /
+// lexer / ast_nodes ...）。两门语言挂在同一个 Pyodide 里，先跑过的那门会把这些名字
+// 占在 sys.modules 里，后跑的 import 直接命中缓存，于是报
+// `cannot import name 'LightParserCore' from 'parser_core' (/段言/parser_core.py)`。
+// 所以每次执行前都要：把当前语言根提到 sys.path 最前 + 清掉别的语言根加载的模块。
+const 语言根列表 = ["/极快", "/段言", "/光明", "/知行"];
+
+function 激活语言(py, 语言) {
+  py.runPython(`
+import sys
+_根 = '/${语言}'
+_全部根 = ${JSON.stringify(语言根列表)}
+sys.path = [_根] + [p for p in sys.path if p != _根]
+for _名 in [n for n, m in list(sys.modules.items())
+            if getattr(m, '__file__', None)
+            and any(m.__file__.startswith(p + '/') for p in _全部根)
+            and not m.__file__.startswith(_根 + '/')]:
+    del sys.modules[_名]
+`);
+}
+
 // 每门语言的调用桥：翻译成 Python 代码，最后一行为 json.dumps 表达式（runPython 直接返回）
 const 桥 = {
   极快: (src) => `
@@ -178,7 +199,9 @@ self.addEventListener("message", async (e) => {
     // 返回值：Python 代码末行表达式（通常是 json.dumps(...) 出来的字符串），
     // 打包成 {stdout: 原始} —— 与语言桥消息格式保持一致，调用方自己 JSON.parse。
     try {
-      await 准备语言(依赖语言 || "极快");
+      const 依 = 依赖语言 || "极快";
+      await 准备语言(依);
+      激活语言(_py, 依);
       postMessage({ 类型: "开始执行", 会话id });  // 加载已完成，主线程此刻才开始 5 秒计时
       const py = _py;
       const 原始 = py.runPython(源码);
@@ -191,6 +214,7 @@ self.addEventListener("message", async (e) => {
   if (类型 !== "跑") return;
   try {
     await 准备语言(语言);
+    激活语言(_py, 语言);
     postMessage({ 类型: "开始执行", 会话id });  // 加载已完成，主线程此刻才开始 5 秒计时
     const py = _py;
     const 代码 = 桥[语言];
