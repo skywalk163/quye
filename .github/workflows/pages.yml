@@ -47,6 +47,18 @@ jobs:
         run: |
           echo "::warning::命中率低于阈值 80%，请检查极快块库或 retrieval 抽取路径"
 
+      # 软门禁：块示例自检（/块 页对每块都提供「在浏览器里跑」，这里验证示例真能跑）。
+      # 阈值 90%——文件/网络类块在浏览器沙箱里跑不通属预期，低于该线说明布局或上游出了系统性问题。
+      - name: Block examples (soft gate)
+        id: blockdemo
+        continue-on-error: true
+        run: python 工具/块示例自检.py
+
+      - name: Warn on block example regression
+        if: steps.blockdemo.outcome == 'failure'
+        run: |
+          echo "::warning::块示例通过率低于 90%，/块 页的「在浏览器里跑」可能大面积失效——优先查 stdlib 路径补丁"
+
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
