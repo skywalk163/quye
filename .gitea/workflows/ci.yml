@@ -1,0 +1,40 @@
+# 去也 quye.com · 本地 CI（Gitea Actions，FreeBSD host 模式，无 Docker）
+#
+# 等价于 .github/workflows/pages.yml 的「构建 + 自检」部分：
+#   - runs-on: freebsd（act_runner，python3 v3.11）
+#   - 建站.py 为纯标准库、零第三方依赖，无需 pip 安装
+#   - checkout 走本地 actions/checkout
+#   - 去掉 GitHub Pages 部署与上游漂移监控（均依赖 GitHub 服务）
+#
+# 硬门禁：建站.py 构建 + 产物自检
+# 软门禁：命中率实测 / 块示例自检（依赖极快 retrieval 模块与浏览器沙箱，
+#         本地 runner 上很可能跑不通，故 continue-on-error 不阻塞整体）
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: freebsd
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: 构建站点（建站.py，纯标准库）
+        run: python3 建站.py
+
+      - name: 产物自检（硬门禁）
+        run: python3 工具/产物自检.py
+
+      - name: 命中率实测（软门禁，依赖极快 retrieval）
+        continue-on-error: true
+        run: python3 工具/命中率实测.py
+
+      - name: 块示例自检（软门禁，依赖浏览器沙箱）
+        continue-on-error: true
+        run: python3 工具/块示例自检.py

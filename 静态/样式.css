@@ -241,6 +241,8 @@ main p code { background: #f0f0f0; padding: 0.1em 0.4em; border-radius: 3px; }
 /* ===== M6：块浏览器 / 管道 / 历史 ===== */
 
 /* 块浏览器 */
+.页面引导 { font-size: 0.9rem; color: var(--色-浅字); margin-bottom: var(--间-基); }
+.页面引导 a { color: var(--色-强调); text-decoration: underline; }
 .块搜索 input[type="search"] { width: 100%; padding: 10px 12px; font: inherit; border: 1px solid #ddd; border-radius: 6px; background: var(--色-卡背景); }
 .块搜索 input[type="search"]:focus { outline: 2px solid var(--色-强调); outline-offset: 1px; }
 .领域筛选 { display: flex; flex-wrap: wrap; gap: 6px; margin: var(--间-基) 0; }
