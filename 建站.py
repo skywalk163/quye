@@ -1,5 +1,6 @@
 """quye.com 构建脚本 — 纯标准库，零第三方依赖"""
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -65,14 +66,42 @@ BUILD_CACHE = ROOT / ".build_cache"
 快照记录: dict = {}
 
 
-# 本地开发时可用的已有仓库路径（避免网络 clone）
-# CI 环境中这些路径不存在，会自动回退到 git clone
-LOCAL_REPOS = {
-    "极快": Path(r"G:\traework\jikuai"),
-    "段言": Path(r"C:\dumatework\duan"),
-    "光明": None,  # 本地无，强制 clone
-    "知行": Path(r"g:\zhixing"),
-}
+# 本地开发时可用的已有仓库路径（避免网络 clone）。
+# 从 .env 或环境变量读取——不提交私人路径到 git。
+# CI 里这些变量不存在 → 值为 None → 自动回退到 git clone。
+# .env 格式：QUYE_LOCAL_极快=G:\traework\jikuai（见 .env.example）
+def _载入env(env路径: Path) -> None:
+    """极简 .env 加载器：只覆盖尚未设置的环境变量，不引入第三方依赖。"""
+    if not env路径.exists():
+        return
+    for 原行 in env路径.read_text(encoding="utf-8-sig").splitlines():
+        行 = 原行.strip()
+        if not 行 or 行.startswith("#") or "=" not in 行:
+            continue
+        键, _, 值 = 行.partition("=")
+        键 = 键.strip()
+        值 = 值.strip().strip('"').strip("'")
+        if 键 and 键 not in os.environ:
+            os.environ[键] = 值
+
+
+_载入env(ROOT / ".env")
+
+
+def _本地路径(名: str) -> Path | None:
+    """从 QUYE_LOCAL_<名> 环境变量（或 .env）读取本地仓库路径。
+
+    未配置或路径不存在则返回 None → 浅克隆 回退到远端 clone。
+    CI 里 .env 不存在 + 环境变量未设 → 全部走 clone，符合预期。
+    """
+    值 = os.environ.get(f"QUYE_LOCAL_{名}", "").strip()
+    if not 值:
+        return None
+    p = Path(值).expanduser()
+    return p if p.exists() else None
+
+
+LOCAL_REPOS = {名: _本地路径(名) for 名 in ("极快", "段言", "光明", "知行")}
 
 
 def 浅克隆(名: str, urls: dict) -> Path:
