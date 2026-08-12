@@ -219,6 +219,9 @@ def 抽取语言包(版本: dict) -> None:
         )
 
     # 每门语言额外打一个 zip，供 Worker 一次拉取解包（M2 遗留：394 文件串行 fetch 过慢）
+    #
+    # 光明积木库（万余个 .light）只在构建期给块浏览器抽契约用，运行期浏览器拿的是
+    # 块索引.json 里已内联的示例源码，不需要这批文件——排掉它，别让每个访客白下 2.6 MB。
     import zipfile
     for 名 in ["极快", "段言", "光明", "知行"]:
         目录 = py目标 / 名
@@ -227,8 +230,11 @@ def 抽取语言包(版本: dict) -> None:
         zip路径 = py目标 / f"{名}.zip"
         with zipfile.ZipFile(zip路径, "w", zipfile.ZIP_DEFLATED) as zf:
             for p in sorted(目录.rglob("*")):
-                if p.is_file() and p.name != "清单.json":
-                    zf.write(p, p.relative_to(目录).as_posix())
+                if not p.is_file() or p.name == "清单.json":
+                    continue
+                if "积木库" in p.relative_to(目录).parts:
+                    continue
+                zf.write(p, p.relative_to(目录).as_posix())
         print(f"    {名}.zip 打包 {zip路径.stat().st_size // 1024} KB")
 
 
@@ -645,83 +651,223 @@ def 构建学习(版本: dict):
             (目录 / "index.html").write_text(页, encoding="utf-8")
 
 
-def 构建块浏览器(版本: dict):
-    """M6 块浏览器 /块：从 出/静态/py/极快/stdlib/blocks/索引.json 构建分类列表。
+# ---- 块浏览器：多语言块/积木的统一 schema ----
+#
+# 极快与光明两边的索引字段长得不一样（极快 领域 是列表、有 导出/示例；光明 领域 是
+# 字符串、描述与输入普遍为空，契约只写在 .light 源码头注释里）。这里各自 normalize
+# 成同一份 schema 再合并，前端只认这一份：
+#   {名称, 语言, 领域(str), 描述, 输入:[{名,类型}], 输出:{类型},
+#    导出:[str], 稳定性, 层级, 示例, 可运行}
 
-    索引.json 不含「示例」字段（上游刻意窄化），所以这里逐块读 块.json 补上，
-    合并结果写到 出/数据/块索引.json 供前端一次 fetch。
-    """
+
+def _出类型(输出) -> str:
+    """输出.类型 有时是字符串、有时嵌一层 dict，抹平成字符串。"""
+    t = (输出 or {}).get("类型", "?")
+    return t.get("类型", "?") if isinstance(t, dict) else (t or "?")
+
+
+def _极快块表() -> list[dict]:
+    """极快标准库块：索引.json 不含「示例」（上游刻意窄化），逐块读 块.json 补上。"""
     blocks根 = OUT / "静态" / "py" / "极快" / "stdlib" / "blocks"
     索引路径 = blocks根 / "索引.json"
     if not 索引路径.exists():
         raise FileNotFoundError(f"极快块索引缺失：{索引路径}")
-    块列表 = json.loads(索引路径.read_text(encoding="utf-8")).get("块", [])
-
-    # 补示例字段（索引.json 只有 名称/领域/描述/输入/输出/导出/稳定性）
-    for b in 块列表:
+    表 = []
+    for b in json.loads(索引路径.read_text(encoding="utf-8")).get("块", []):
         领域 = (b.get("领域") or ["未分类"])[0]
         块json = blocks根 / 领域 / b["名称"] / "块.json"
-        b["示例"] = (
+        示例 = (
             json.loads(块json.read_text(encoding="utf-8")).get("示例", "")
             if 块json.exists() else ""
         )
+        表.append({
+            "名称": b["名称"],
+            "语言": "极快",
+            "领域": 领域,
+            "描述": b.get("描述", ""),
+            "输入": [{"名": i.get("名", "?"), "类型": i.get("类型", "?")}
+                     for i in (b.get("输入") or [])],
+            "输出": {"类型": _出类型(b.get("输出"))},
+            "导出": b.get("导出") or [b["名称"]],
+            "稳定性": b.get("稳定性", ""),
+            "层级": b.get("层级", 0),
+            "示例": 示例,
+            # 极快示例是上游手写的官方示例，视为可跑（跑挂了前端会显示报错）
+            "可运行": bool(示例),
+        })
+    return 表
+
+
+# 光明 .light 积木的头注释契约，形如：
+#   # 积木：各元素ELU（数据领域，自动生成）
+#   # 契约：输入 [列表] → 输出 [列表]（各元素ELU）
+#   导出 ELU
+#   段落 ELU 接收 列表：
+_光明积木行 = re.compile(r"^#\s*积木：(.+?)（")
+_光明契约行 = re.compile(r"^#\s*契约：输入\s*\[(.*?)\]\s*→\s*输出\s*\[?([^\]（]*)\]?(?:（(.+?)）)?")
+_光明段落行 = re.compile(r"^段落\s+(\S+)\s+接收\s+(.+?)：")
+
+# 按契约类型造示例入参。类型名取自光明契约注释里出现过的写法。
+_光明样例值 = {
+    "列表": "[1, 2, 3]",
+    "数": "3",
+    "小数": "2.5",
+    "文本": "'光明'",
+    "逻辑": "真",
+    "字典": "{}",
+    "数列": "[1, 2, 3]",
+}
+
+
+def _解析光明积木(源码: str, 名称: str) -> dict:
+    """从 .light 源码头注释 + 段落签名里抠出契约。
+
+    光明 索引.json 的 描述/输入 字段普遍是空的（上游生成器没填），真正的契约信息
+    只在源码头两行注释里，所以这里以源码为准。
+    """
+    描述, 入类型串, 出类型 = "", "", "任意"
+    段落名, 形参 = 名称, []
+    for 行 in 源码.splitlines():
+        行 = 行.strip()
+        if not 描述:
+            m = _光明积木行.match(行)
+            if m:
+                描述 = m.group(1).strip()
+        m = _光明契约行.match(行)
+        if m:
+            入类型串 = m.group(1).strip()
+            出类型 = (m.group(2) or "任意").strip() or "任意"
+            if not 描述 and m.group(3):
+                描述 = m.group(3).strip()
+        m = _光明段落行.match(行)
+        if m:
+            段落名 = m.group(1)
+            形参 = [p.strip() for p in m.group(2).split(",") if p.strip()]
+            break  # 段落签名是头部最后一行有用信息，到此为止
+    类型表 = [t.strip() for t in 入类型串.split(",") if t.strip()]
+    if len(类型表) != len(形参):
+        # 契约与签名对不上（生成器留下的噪声），类型退化成「任意」但保住形参名
+        类型表 = (类型表 + ["任意"] * len(形参))[:len(形参)]
+    return {
+        "描述": 描述,
+        "输入": [{"名": p, "类型": t} for p, t in zip(形参, 类型表)],
+        "输出": {"类型": 出类型},
+        "段落名": 段落名,
+    }
+
+
+def _光明块表() -> list[dict]:
+    """光明积木库：索引给块清单，契约与示例从 .light 源码现场解析 + 合成。
+
+    积木本身只是「定义一个段落」，跑起来不会有任何输出，所以这里按契约合成一行
+    `打印(段落名(样例入参))` 追加在源码后面当示例——这份合成示例同时也是
+    预跑器.预跑光明积木() 的输入，跑通了才在页面上给「在浏览器里跑」按钮。
+    """
+    积木根 = OUT / "静态" / "py" / "光明" / "积木库"
+    索引路径 = 积木根 / "索引.json"
+    if not 索引路径.exists():
+        print(f"    ! 光明积木索引缺失，跳过光明积木：{索引路径}")
+        return []
+    表 = []
+    for b in json.loads(索引路径.read_text(encoding="utf-8")).get("块", []):
+        名称 = b.get("名称") or ""
+        领域 = b.get("领域") or "未分类"
+        # 索引里的 路径 形如 blocks_v5/中文/Unicode码点.light；抽取期 blocks_v5 已落成
+        # 积木库/blocks，所以剥掉这层前缀即可
+        路径 = b.get("路径") or f"{领域}/{名称}.light"
+        if 路径.startswith("blocks_v5/"):
+            路径 = 路径[len("blocks_v5/"):]
+        源文件 = 积木根 / "blocks" / 路径
+        if not 源文件.exists():
+            continue
+        源码 = 源文件.read_text(encoding="utf-8")
+        契约 = _解析光明积木(源码, 名称)
+        入参 = ", ".join(_光明样例值.get(i["类型"], "1") for i in 契约["输入"])
+        示例 = f"{源码.rstrip()}\n\n打印({契约['段落名']}({入参}))\n"
+        表.append({
+            "名称": 名称,
+            "语言": "光明",
+            "领域": 领域,
+            "描述": 契约["描述"] or b.get("描述", "") or 名称,
+            "输入": 契约["输入"],
+            "输出": 契约["输出"],
+            "导出": [b.get("导出名") or 契约["段落名"]],
+            "稳定性": b.get("稳定性", ""),
+            "层级": b.get("层级", 0),
+            "示例": 示例,
+            # 由 预跑光明积木() 回填：只有构建期真跑出输出的积木才置 True
+            "可运行": False,
+        })
+    return 表
+
+
+def 构建块浏览器(版本: dict):
+    """M7 块浏览器 /块：极快标准库块 + 光明积木库，合并成一份多语言列表。
+
+    两边索引各自 normalize 成统一 schema（见 _极快块表 / _光明块表），合并结果写到
+    出/数据/块索引.json。页面自身只出筛选按钮与一个空网格——上万张卡片改由前端按
+    当前语言/领域/搜索现渲染（见 块浏览.js），HTML 不再随块数膨胀（原先上万卡片会把
+    /块 的 index.html 撑到 3 MB+）。
+    """
+    块列表 = _极快块表() + _光明块表()
+
+    # 光明积木的「可运行」标：构建期用光明解释器实跑合成示例，跑出输出才算可运行
+    import 预跑器
+    预跑器.预跑光明积木(块列表, OUT / "静态" / "py" / "光明")
 
     (OUT / "数据" / "块索引.json").write_text(
         json.dumps({"块": 块列表}, ensure_ascii=False), encoding="utf-8"
     )
 
-    分组 = {}
+    语言分组: dict[str, int] = {}
+    领域分组: dict[str, int] = {}
     for b in 块列表:
-        分组.setdefault((b.get("领域") or ["未分类"])[0], []).append(b)
+        语言分组[b["语言"]] = 语言分组.get(b["语言"], 0) + 1
+        领域分组[b["领域"]] = 领域分组.get(b["领域"], 0) + 1
 
-    领域标签 = "\n".join(
-        f"<button type='button' class='领域标签' data-领域='{转义(域)}'>{转义(域)} {len(组)}</button>"
-        for 域, 组 in sorted(分组.items())
+    语言标签 = "\n".join(
+        f"<button type='button' class='语言标签' data-语言='{转义(语)}'>{转义(语)} {数}</button>"
+        for 语, 数 in sorted(语言分组.items(), key=lambda kv: -kv[1])
     )
-    卡片 = []
-    for b in 块列表:
-        领域 = (b.get("领域") or ["未分类"])[0]
-        入参 = "、".join(i.get("名", "?") for i in (b.get("输入") or [])) or "无入参"
-        导出名 = (b.get("导出") or [b["名称"]])[0]
-        出类型 = b.get("输出", {}).get("类型", "?")
-        if isinstance(出类型, dict):
-            出类型 = 出类型.get("类型", "?")
-        卡片.append(
-            f"<button type='button' class='块卡' data-领域='{转义(领域)}'"
-            f" data-名称='{转义(b['名称'])}'>"
-            f"<span class='块名'>{转义(b['名称'])}</span>"
-            f"<span class='块签名'>{转义(导出名)}({转义(入参)}) → {转义(出类型)}</span>"
-            f"<span class='块描述'>{转义(b.get('描述', ''))}</span>"
-            f"<span class='块标记'>{转义(领域)} · {转义(b.get('稳定性', ''))}</span>"
-            f"</button>"
-        )
+    领域标签 = "\n".join(
+        f"<button type='button' class='领域标签' data-领域='{转义(域)}'>{转义(域)} {数}</button>"
+        for 域, 数 in sorted(领域分组.items())
+    )
+    可跑数 = sum(1 for b in 块列表 if b["可运行"])
+    语言概览 = "、".join(f"{语} {数}" for 语, 数 in sorted(语言分组.items(), key=lambda kv: -kv[1]))
     内容 = (
         "<section class='块浏览器'>"
-        "<h1>块生态浏览器</h1>"
-        f"<p>极快标准库共 {len(块列表)} 个块，分 {len(分组)} 个领域。"
-        "点任一块看签名与描述，可直接在浏览器里跑它的官方示例。</p>"
-        "<p class='页面引导'>块生态是极快的语言特色。"
-        "段言、光明、知行走「直接写代码」路径，"
-        "想上手它们请到 <a href='/学/'>学习区</a> 逐关练习。</p>"
+        "<h1>块 / 积木浏览器</h1>"
+        f"<p>共 {len(块列表)} 个可复用单元（{语言概览}），横跨 {len(领域分组)} 个领域。"
+        "点任一块看签名与描述，其中 "
+        f"{可跑数} 个能直接在浏览器里跑示例。</p>"
+        "<p class='页面引导'>「块」是把常用能力封装成可组合单元的做法，"
+        "极快与光明都走这条路线——极快叫块、光明叫积木。"
+        "段言、知行目前走「直接写代码」路径，"
+        "想上手请到 <a href='/学/'>学习区</a> 逐关练习。</p>"
         "<div class='块搜索'><input type='search' id='块搜索框' "
         "placeholder='搜索块名或描述…' autocomplete='off' aria-label='搜索块'></div>"
+        f"<div class='语言筛选'>"
+        f"<button type='button' class='语言标签 激活' data-语言='全部'>全部语言 {len(块列表)}</button>"
+        f"{语言标签}</div>"
         f"<div class='领域筛选'>"
-        f"<button type='button' class='领域标签 激活' data-领域='全部'>全部 {len(块列表)}</button>"
+        f"<button type='button' class='领域标签 激活' data-领域='全部'>全部领域 {len(块列表)}</button>"
         f"{领域标签}</div>"
         "<div id='块详情' class='块详情' hidden></div>"
-        f"<div class='块网格' id='块网格'>{''.join(卡片)}</div>"
+        "<p class='块提示' id='块提示' aria-live='polite'>加载积木索引…</p>"
+        "<div class='块网格' id='块网格'></div>"
         "</section>"
         '\n<script src="/静态/块浏览.js"></script>'
     )
     页 = 渲染页面(
-        "块浏览器 — quye", 内容, 版本,
-        描述=f"浏览极快 {len(块列表)} 个标准库块：按领域分类、查看签名与描述、在线运行官方示例。",
+        "块 / 积木浏览器 — quye", 内容, 版本,
+        描述=f"浏览 {len(块列表)} 个中文编程可复用单元（{语言概览}）：按语言与领域筛选、查看签名与描述、在线运行示例。",
         路径="/块/",
     )
     块根 = OUT / "块"
     块根.mkdir(parents=True, exist_ok=True)
     (块根 / "index.html").write_text(页, encoding="utf-8")
-    print(f"    块浏览器：{len(块列表)} 块 / {len(分组)} 个领域")
+    print(f"    块浏览器：{len(块列表)} 块（{语言概览}）/ {len(领域分组)} 个领域，可跑 {可跑数}")
 
 
 def 复制静态():

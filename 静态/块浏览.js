@@ -1,40 +1,87 @@
-// /块 页：分类筛选、搜索、点击查看详情、在浏览器里跑官方示例。
+// /块 页：前端驱动渲染——从 /数据/块索引.json 拉取完整索引，按语言/领域/搜索现场渲染卡片。
+// 服务端只输出筛选按钮与空网格容器，不再内联上万张卡片（原先把 index.html 撑到 3 MB+）。
 (function () {
   const 网格 = document.getElementById('块网格');
   const 详情 = document.getElementById('块详情');
   const 搜索框 = document.getElementById('块搜索框');
+  const 提示 = document.getElementById('块提示');
   if (!网格 || !详情) return;
 
-  // ---- 领域筛选 + 搜索 ----
+  // ---- 数据 ----
+  let _全部块 = [];  // 索引加载后填充
+  let _索引Promise = null;
+  function 取索引() {
+    if (!_索引Promise) _索引Promise = fetch('/数据/块索引.json').then(r => r.json());
+    return _索引Promise;
+  }
+
+  // ---- 筛选状态 ----
+  let 当前语言 = '全部';
   let 当前领域 = '全部';
-  document.querySelectorAll('.领域标签').forEach((btn) => {
+  let 当前搜索 = '';
+
+  document.querySelectorAll('.语言标签').forEach(btn => {
     btn.addEventListener('click', () => {
-      document.querySelectorAll('.领域标签').forEach((b) => b.classList.remove('激活'));
+      document.querySelectorAll('.语言标签').forEach(b => b.classList.remove('激活'));
       btn.classList.add('激活');
-      当前领域 = btn.dataset.领域;
-      过滤();
+      当前语言 = btn.dataset.语言;
+      渲染网格();
     });
   });
-
-  function 过滤() {
-    const q = (搜索框 ? 搜索框.value : '').trim().toLowerCase();
-    let 显示数 = 0;
-    网格.querySelectorAll('.块卡').forEach((卡) => {
-      const 名 = 卡.dataset.名称.toLowerCase();
-      const 描 = 卡.querySelector('.块描述').textContent.toLowerCase();
-      const 领配 = 当前领域 === '全部' || 卡.dataset.领域 === 当前领域;
-      const 文配 = !q || 名.includes(q) || 描.includes(q);
-      卡.hidden = !(领配 && 文配);
-      if (!卡.hidden) 显示数++;
+  document.querySelectorAll('.领域标签').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.领域标签').forEach(b => b.classList.remove('激活'));
+      btn.classList.add('激活');
+      当前领域 = btn.dataset.领域;
+      渲染网格();
     });
-  }
+  });
   if (搜索框) {
     let 定时器 = null;
     搜索框.addEventListener('input', () => {
       clearTimeout(定时器);
-      定时器 = setTimeout(过滤, 120);
+      定时器 = setTimeout(() => { 当前搜索 = 搜索框.value.trim().toLowerCase(); 渲染网格(); }, 150);
     });
   }
+
+  // ---- 渲染卡片网格 ----
+  function 渲染网格() {
+    const 匹配 = _全部块.filter(b => {
+      if (当前语言 !== '全部' && b.语言 !== 当前语言) return false;
+      if (当前领域 !== '全部' && b.领域 !== 当前领域) return false;
+      if (当前搜索 && !b.名称.toLowerCase().includes(当前搜索) && !(b.描述 || '').toLowerCase().includes(当前搜索)) return false;
+      return true;
+    });
+    // 上限：超过 500 不渲染全部，提示缩窄筛选
+    const 上限 = 500;
+    const 截断 = 匹配.length > 上限;
+    const 渲染列 = 截断 ? 匹配.slice(0, 上限) : 匹配;
+    const html = 渲染列.map(b => {
+      const 入参 = (b.输入 || []).map(i => i.名 || '?').join('、') || '无入参';
+      const 导出名 = (b.导出 || [b.名称])[0];
+      const 出类型 = b.输出 && b.输出.类型 || '?';
+      return `<button type="button" class="块卡" data-语言="${esc(b.语言)}" data-领域="${esc(b.领域)}" data-名称="${esc(b.名称)}">` +
+        `<span class="块名">${esc(b.名称)}</span>` +
+        `<span class="块签名">${esc(导出名)}(${esc(入参)}) → ${esc(出类型)}</span>` +
+        `<span class="块描述">${esc(b.描述 || '')}</span>` +
+        `<span class="块标记">${esc(b.语言)} · ${esc(b.领域)}${b.稳定性 ? ' · ' + esc(b.稳定性) : ''}</span>` +
+        `</button>`;
+    }).join('');
+    网格.innerHTML = html;
+    if (提示) {
+      if (匹配.length === 0) 提示.textContent = '未找到匹配的块，试试其他搜索词或领域？';
+      else if (截断) 提示.textContent = `匹配 ${匹配.length} 个，已显示前 ${上限} 个——请缩窄筛选。`;
+      else 提示.textContent = `显示 ${匹配.length} 个`;
+    }
+  }
+
+  // ---- 初始化：拉索引 → 渲染 ----
+  取索引().then(data => {
+    _全部块 = data.块 || [];
+    渲染网格();
+  }).catch(e => {
+    if (提示) 提示.textContent = `加载索引失败：${e.message}`;
+  });
 
   // ---- Worker（懒建，与工作台同规则；执行 5 秒超时） ----
   const 加载超时 = 180000;
@@ -83,11 +130,6 @@
   }
 
   // ---- 详情面板 ----
-  let _索引Promise = null;
-  function 取索引() {
-    if (!_索引Promise) _索引Promise = fetch('/数据/块索引.json').then((r) => r.json());
-    return _索引Promise;
-  }
   function 设状态(t) {
     const s = 详情.querySelector('.详状态');
     if (s) s.textContent = t;
@@ -97,8 +139,8 @@
     const 卡 = e.target.closest('.块卡');
     if (!卡) return;
     const 名 = 卡.dataset.名称;
-    const 索引 = await 取索引();
-    const b = (索引.块 || []).find((x) => x.名称 === 名);
+    const 语言 = 卡.dataset.语言;
+    const b = _全部块.find(x => x.名称 === 名 && x.语言 === 语言);
     if (!b) return;
     渲染详情(b);
     详情.hidden = false;
@@ -107,26 +149,28 @@
 
   function 渲染详情(b) {
     const 导出名 = (b.导出 || [b.名称])[0];
-    const 入参 = (b.输入 || []).map((i) => {
+    const 入参 = (b.输入 || []).map(i => {
       const t = i.类型 && typeof i.类型 === 'object' ? `${i.类型.类型}/${i.类型.元素类型 || ''}` : i.类型;
       return `${i.名 || '?'}:${t || '?'}`;
     }).join('、') || '无';
     const 出t = b.输出 && typeof b.输出.类型 === 'object' ? b.输出.类型.类型 : (b.输出 && b.输出.类型);
-    const 领域 = (b.领域 || ['未分类'])[0];
+    const 领域 = b.领域 || '未分类';
+    const 语言 = b.语言 || '极快';
+    const 可跑 = !!(b.示例 && b.可运行);
 
     详情.innerHTML = `
       <div class="详头">
         <button type="button" class="详关闭" aria-label="关闭详情">×</button>
-        <h2>${escapeHtml(b.名称)}</h2>
-        <p class="详签名"><code>${escapeHtml(导出名)}(${escapeHtml(入参)}) → ${escapeHtml(出t || '?')}</code></p>
-        <p class="详标签">${escapeHtml(领域)} · ${escapeHtml(b.稳定性 || '')} · 层级 ${b.层级 ?? '?'}</p>
-        <p class="详描述">${escapeHtml(b.描述 || '')}</p>
+        <h2>${esc(b.名称)}</h2>
+        <p class="详签名"><code>${esc(导出名)}(${esc(入参)}) → ${esc(出t || '?')}</code></p>
+        <p class="详标签">${esc(语言)} · ${esc(领域)}${b.稳定性 ? ' · ' + esc(b.稳定性) : ''} · 层级 ${b.层级 ?? '?'}</p>
+        <p class="详描述">${esc(b.描述 || '')}</p>
       </div>
       <div class="详示例">
-        <h3>官方示例</h3>
-        <pre class="详代码">${escapeHtml(b.示例 || '（无示例）')}</pre>
+        <h3>${语言 === '光明' ? '合成示例' : '官方示例'}</h3>
+        <pre class="详代码">${esc(b.示例 || '（无示例）')}</pre>
         <div class="详按钮">
-          <button type="button" class="详跑" ${b.示例 ? '' : 'disabled'}>在浏览器里跑</button>
+          <button type="button" class="详跑" ${可跑 ? '' : 'disabled'}>${可跑 ? '在浏览器里跑' : (b.示例 ? '此积木未通过构建期预跑' : '暂无示例')}</button>
           <a class="详按钮次" href="/台/">在工作台修改这段代码 →</a>
         </div>
         <p class="详状态"></p>
@@ -135,13 +179,13 @@
     `;
     详情.querySelector('.详关闭').addEventListener('click', () => { 详情.hidden = true; });
     const 跑钮 = 详情.querySelector('.详跑');
-    if (跑钮) 跑钮.addEventListener('click', async () => {
+    if (跑钮 && 可跑) 跑钮.addEventListener('click', async () => {
       const 输出 = 详情.querySelector('.详输出');
       输出.hidden = false;
       输出.textContent = '执行中…';
-      设状态('准备极快解释器（首次约 30 秒）');
+      设状态(`准备${语言}解释器（首次约 30 秒）`);
       try {
-        const r = await 发消息({ 类型: '跑', 语言: '极快', 源码: b.示例 });
+        const r = await 发消息({ 类型: '跑', 语言, 源码: b.示例 });
         输出.textContent = r.stdout || '(无输出)';
         设状态('✓ 已完成');
       } catch (err) {
@@ -151,7 +195,7 @@
     });
   }
 
-  function escapeHtml(s) {
+  function esc(s) {
     const d = document.createElement('div');
     d.textContent = String(s);
     return d.innerHTML;

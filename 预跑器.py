@@ -137,6 +137,100 @@ def 预跑(数据目录: Path, py根: Path) -> None:
     print(f"  预跑通过 {len(结果['工作台官方示例'])} 个工作台示例 + {len(集['对照示例'])} 组对照示例")
 
 
+# 光明积木预跑的子进程脚本：一个进程跑完整批，逐条 flush 结果到 JSONL。
+# 为什么不复用 跑一个()：那是「一块一进程」，上万块起进程的开销以小时计。
+# 逐条 flush 的作用是「一条卡死不牵连全批」——外层超时杀掉进程后，已写下的结果照样算。
+光明积木预跑脚本 = """
+import sys, io, json
+sys.path.insert(0, @@LANG_DIR@@)
+from light_parser_v3 import LightParser
+from code_generator import PythonCodeGenerator
+
+任务 = json.load(open(@@任务文件@@, encoding='utf-8'))
+出 = open(@@结果文件@@, 'w', encoding='utf-8')
+真stdout = sys.stdout
+for 条 in 任务:
+    缓冲 = io.StringIO()
+    可运行, 输出 = False, ''
+    try:
+        _ast = LightParser().parse(条['示例'])
+        _py = PythonCodeGenerator().generate(_ast)
+        sys.stdout = 缓冲
+        exec(_py, {'__name__': '__main__'})
+        sys.stdout = 真stdout
+        输出 = 缓冲.getvalue()
+        可运行 = bool(输出.strip())
+    except KeyboardInterrupt:
+        raise
+    except BaseException:
+        # 生成器产出的积木有相当比例踩到解释器未覆盖的语法（如三元 如果…则…否则）
+        # 或引用了未定义名字，跑挂是常态，不是构建错误
+        sys.stdout = 真stdout
+    出.write(json.dumps(
+        {'名称': 条['名称'], '可运行': 可运行, 'stdout': 输出[:500]},
+        ensure_ascii=False) + '\\n')
+    出.flush()
+出.close()
+"""
+
+
+def 预跑光明积木(块列表: list, 语言目录: Path, 超时秒: int = 900) -> None:
+    """就地把 块列表 里光明积木的「可运行」标跑出来。
+
+    光明积木本身只定义一个段落，直接跑没有输出，所以 建站._光明块表() 已按契约
+    合成了 `打印(段落名(样例入参))` 追加在源码后面。这里用光明解释器实跑那份合成
+    示例：跑出非空输出才置 可运行=True，页面据此决定是否给「在浏览器里跑」按钮。
+
+    跑挂/超时都不失败构建——积木库是自动生成的，可运行率本身就是一项观测指标，
+    不是门禁。只在一条都没跑通时告警（那通常意味着解释器抽取坏了）。
+    """
+    待跑 = [b for b in 块列表 if b["语言"] == "光明" and b.get("示例")]
+    if not 待跑:
+        return
+    结果 = {}
+    with tempfile.TemporaryDirectory(prefix="quye_积木预跑_") as 沙箱:
+        任务文件 = Path(沙箱) / "任务.json"
+        结果文件 = Path(沙箱) / "结果.jsonl"
+        任务文件.write_text(
+            json.dumps([{"名称": b["名称"], "示例": b["示例"]} for b in 待跑],
+                       ensure_ascii=False),
+            encoding="utf-8",
+        )
+        code = (
+            光明积木预跑脚本
+            .replace("@@LANG_DIR@@", repr(str(语言目录)))
+            .replace("@@任务文件@@", repr(str(任务文件)))
+            .replace("@@结果文件@@", repr(str(结果文件)))
+        )
+        超时了 = False
+        try:
+            subprocess.run(
+                [sys.executable, "-c", code],
+                capture_output=True, text=True, timeout=超时秒,
+                encoding="utf-8", errors="replace",
+                cwd=沙箱,  # 文件/系统类积木可能真写盘，别污染仓库
+                env={**os.environ, "PYTHONIOENCODING": "utf-8", "PYTHONUTF8": "1"},
+            )
+        except subprocess.TimeoutExpired:
+            超时了 = True
+        if 结果文件.exists():
+            for 行 in 结果文件.read_text(encoding="utf-8").splitlines():
+                if not 行.strip():
+                    continue
+                r = json.loads(行)
+                结果[r["名称"]] = r
+    for b in 待跑:
+        r = 结果.get(b["名称"])
+        if r and r["可运行"]:
+            b["可运行"] = True
+    跑通 = sum(1 for b in 待跑 if b["可运行"])
+    尾注 = f"（超时 {超时秒}s 截断，已判定 {len(结果)}/{len(待跑)}）" if 超时了 else ""
+    if not 跑通:
+        print(f"    ! 光明积木预跑 0 通过{尾注}——检查光明解释器抽取是否正常")
+    else:
+        print(f"    光明积木预跑：{跑通}/{len(待跑)} 可跑{尾注}")
+
+
 def 预跑学习基线(数据目录: Path, py根: Path) -> None:
     """跑每关参考答案，抓 stdout 作判对基线。
 
